@@ -5,7 +5,6 @@ Chain API
 
 - Go >= 1.16
 - Redis >= 6.2.0
-- MySQL >= 5.7
 
 ### Clone code
 
