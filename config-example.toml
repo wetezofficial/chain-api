@@ -1,0 +1,32 @@
+listen = "127.0.0.1:1324"
+
+[upstream]
+eth.http = "https://rinkeby-light.eth.linkpool.io"
+eth.ws = ""
+
+arbitrum.http = "https://rinkeby.arbitrum.io/rpc"
+arbitrum.ws = ""
+
+polygon.http = "https://rpc-mumbai.maticvigil.com"
+polygon.ws = ""
+
+solana.http = "https://api.testnet.solana.com"
+solana.ws = ""
+
+[[redis]]
+database = 14
+username = ""
+password = ""
+addr = "127.0.0.1:6379"
+
+[[redis]]
+database = 15
+username = ""
+password = ""
+addr = "127.0.0.1:6379"
+
+[log]
+# debug, info, warn, error
+level           = "debug"
+is_dev             = true
+log_file        = "./starnet_chain_api.log"
