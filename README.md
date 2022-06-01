@@ -1,17 +1,31 @@
 Chain API
 ============================
 
-**READ starnet/starnet/README.md first**
+### Requirements
 
+- Go >= 1.16
+- Redis >= 6.2.0
+- MySQL >= 5.7
 
-#### Build chain-api
+### Clone code
 
 ```shell
+mkdir starnet
+cd starnet
+
+git clone https://github.com/wetezofficial/starnet
+git clone https://github.com/wetezofficial/chain-api
+```
+
+### Build chain-api
+
+```shell
+cd chain-api
 make build
 # output file: ./build/prod/starnet-chain-api
 ```
 
-#### Run as a service on remote server
+### Run as a service on remote server
 
 ```shell
 # copy ./build/prod/starnet-chain-api to remote server /usr/local/bin/starnet-chain-api
