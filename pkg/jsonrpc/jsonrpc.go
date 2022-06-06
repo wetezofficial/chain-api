@@ -1,12 +1,59 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"encoding/json"
 )
 
 // https://www.jsonrpc.org/specification#compatibility
 
 type JsonRpcRequest struct {
+	batchCall  []JsonRpcSingleRequest
+	singleCall *JsonRpcSingleRequest
+}
+
+func (r *JsonRpcRequest) IsBatchCall() bool {
+	return r.batchCall != nil
+}
+
+func (r *JsonRpcRequest) Cost() int {
+	if r.singleCall != nil {
+		return 1
+	}
+
+	n := len(r.batchCall)
+	if n == 0 {
+		return 1
+	}
+	return n
+}
+
+func (r *JsonRpcRequest) GetBatchCall() []JsonRpcSingleRequest {
+	return r.batchCall
+}
+
+func (r *JsonRpcRequest) GetSingleCall() *JsonRpcSingleRequest {
+	return r.singleCall
+}
+
+func (r *JsonRpcRequest) MarshalJSON() ([]byte, error) {
+	if r.batchCall != nil {
+		return json.Marshal(r.batchCall)
+	}
+	return json.Marshal(r.singleCall)
+}
+
+func (r *JsonRpcRequest) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if data[0] == '[' && data[len(data)-1] == ']' {
+		// Batch call
+		return json.Unmarshal(data, &r.batchCall)
+	}
+	// single request
+	return json.Unmarshal(data, &r.singleCall)
+}
+
+type JsonRpcSingleRequest struct {
 	ID *interface{} `json:"id"`
 	// JsonRpcVersion A String specifying the version of the JSON-RPC protocol. MUST be exactly "2.0".
 	JsonRpcVersion string          `json:"jsonrpc"`

@@ -26,7 +26,6 @@ type JsonRpcHandler struct {
 	chain                constant.Chain
 	httpSupportedMethods []string
 	wsSupportedMethods   []string
-	subscribeMethods     []string
 	proxy                *proxy.JsonRpcProxy
 	rateLimiter          *ratelimitv1.RateLimiter
 	logger               *zap.Logger
@@ -37,7 +36,6 @@ func NewJsonRpcHandler(
 	chain constant.Chain,
 	httpSupportedMethods []string,
 	wsSupportedMethods []string,
-	subscribeMethods []string,
 	proxy *proxy.JsonRpcProxy,
 	app *app.App,
 ) *JsonRpcHandler {
@@ -45,7 +43,6 @@ func NewJsonRpcHandler(
 		chain:                chain,
 		httpSupportedMethods: httpSupportedMethods,
 		wsSupportedMethods:   wsSupportedMethods,
-		subscribeMethods:     subscribeMethods,
 		proxy:                proxy,
 		rateLimiter:          app.RateLimiter,
 		logger:               app.Logger,
@@ -53,7 +50,7 @@ func NewJsonRpcHandler(
 	}
 }
 
-func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcRequest, supportedMethods []string) *jsonrpc.JsonRpcErr {
+func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcSingleRequest, supportedMethods []string) *jsonrpc.JsonRpcErr {
 	if req.Method == "" {
 		return jsonrpc.ParseError
 	}
@@ -71,14 +68,23 @@ func (h *JsonRpcHandler) bind(rawreq []byte, supportedMethods []string) (*jsonrp
 		return nil, jsonrpc.ParseError
 	}
 
-	if err := h.validateReq(&req, supportedMethods); err != nil {
-		return nil, err
+	if req.IsBatchCall() {
+		for _, r := range req.GetBatchCall() {
+			if err := h.validateReq(&r, supportedMethods); err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		if err := h.validateReq(req.GetSingleCall(), supportedMethods); err != nil {
+			return nil, err
+		}
 	}
+
 	return &req, nil
 }
 
-func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiKey string) *jsonrpc.JsonRpcErr {
-	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey); err != nil {
+func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiKey string, n int) *jsonrpc.JsonRpcErr {
+	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, n); err != nil {
 		if errors.Is(err, ratelimitv1.ExceededRateLimitError) {
 			return jsonrpc.TooManyRequestErr
 		}
@@ -110,10 +116,6 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if rlErr := h.rateLimit(c.Request().Context(), logger, apiKey); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(200, rlErr)
-	}
 
 	rawreq, err := ioutil.ReadAll(c.Request().Body)
 	if err != nil {
@@ -126,11 +128,16 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return c.JSON(200, vErr)
 	}
 
+	if rlErr := h.rateLimit(c.Request().Context(), logger, apiKey, req.Cost()); rlErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+		return c.JSON(200, rlErr)
+	}
+
 	ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*5)
 	resp, err := h.proxy.HttpProxy(ctx, logger, req)
 	if err != nil {
 		logger.Error("fail to proxy request", zap.Error(err))
-		return c.JSON(200, jsonrpc.NewInternalServerError(req.ID))
+		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
 	logger.Debug("got response", zap.ByteString("resp", resp))
@@ -138,11 +145,8 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 	return c.JSONBlob(200, resp)
 }
 
-func (h *JsonRpcHandler) Ws(c echo.Context) error {
+func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 	upgrader := websocket.Upgrader{}
-
-	logger := h.newLogger(c).With(zap.Bool("ws", true))
-
 	apiKey, err := h.bindApiKey(c)
 	if err != nil {
 		return err
@@ -160,18 +164,21 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 	sendCh := make(chan proxy.RespData)
 	defer close(sendCh)
 	go func() {
-		defer ws.Close()
 		var err error
 		for {
 			select {
 			case resp := <-sendCh:
+				if resp.Data == nil {
+					return
+				}
+
 				if err = ws.WriteMessage(websocket.TextMessage, resp.Data); err != nil {
 					return
 				}
 
 				if resp.Subscription {
 					ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
-					if rlErr := h.rateLimit(ctx, logger, apiKey); rlErr != nil {
+					if rlErr := h.rateLimit(ctx, logger, apiKey, 1); rlErr != nil {
 						logger.Warn("rate limit error", zap.Error(rlErr))
 						return
 					}
@@ -201,17 +208,11 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 		var rawreq []byte
 		_, rawreq, err = ws.ReadMessage()
 		if err != nil {
-			logger.Info("ws.ReadMessage", zap.Error(err))
-			return err
+			logger.Debug("connection closed", zap.Error(err))
+			return nil
 		}
 
 		logger.Debug("new request", zap.ByteString("rawreq", rawreq))
-
-		ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
-		if rlErr := h.rateLimit(ctx, logger, apiKey); rlErr != nil {
-			respJSON(logger, rlErr)
-			continue
-		}
 
 		req, vErr := h.bind(rawreq, h.wsSupportedMethods)
 		if vErr != nil {
@@ -219,11 +220,26 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 			continue
 		}
 
+		ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
+		if rlErr := h.rateLimit(ctx, logger, apiKey, req.Cost()); rlErr != nil {
+			respJSON(logger, rlErr)
+			continue
+		}
+
 		ctx, _ = context.WithTimeout(c.Request().Context(), time.Second*10)
 		if err = upstreamConn.Send(c.Request().Context(), logger, req); err != nil {
 			logger.Error("fail to proxy request", zap.Error(err))
-			respJSON(logger, jsonrpc.NewInternalServerError(req.ID))
+			respJSON(logger, jsonrpc.NewInternalServerError(nil))
 			return err
 		}
 	}
+}
+
+func (h *JsonRpcHandler) Ws(c echo.Context) error {
+	logger := h.newLogger(c).With(zap.Bool("ws", true))
+	err := h.handleWs(c, logger)
+	if err != nil {
+		logger.Info("handle ws error", zap.Error(err))
+	}
+	return nil
 }

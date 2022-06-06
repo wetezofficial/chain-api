@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/handler"
-	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/pkg/proxy"
 	"starnet/starnet/constant"
 	"time"
@@ -166,25 +165,6 @@ func initSolanaHandler(app *app.App) error {
 		CacheTime:        time.Second * 4, // block time 400ms https://www.finextra.com/blogposting/21693/introduction-to-the-solana-blockchain
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
-
-		// subscriptions
-		SubscriptionIDExtractor: jsonrpc.SolanaSubscriptionIDExtractor,
-		SubscribeMethods: []string{
-			"accountSubscribe",
-			"logsSubscribe",
-			"programSubscribe",
-			"signatureSubscribe",
-			"slotSubscribe",
-			"rootSubscribe",
-		},
-		UnsubscribeMethods: []string{
-			"accountUnsubscribe",
-			"logsUnsubscribe",
-			"programUnsubscribe",
-			"signatureUnsubscribe",
-			"slotUnsubscribe",
-			"rootUnsubscribe",
-		},
 	}
 
 	p := proxy.NewJsonRpcProxy(app, cfg)
@@ -193,7 +173,6 @@ func initSolanaHandler(app *app.App) error {
 		chain,
 		httpSupportedMethods,
 		wsSupportedMethods,
-		cfg.SubscribeMethods,
 		p,
 		app,
 	)

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/handler"
-	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/pkg/proxy"
 	"starnet/starnet/constant"
 	"time"
@@ -104,30 +103,6 @@ func initEthHandler(app *app.App) error {
 		CacheTime:        time.Second * 12,
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
-
-		// filters
-		FilterIDExtractor: jsonrpc.EthFilterIDExtractor,
-		CreateFilterMethods: []string{
-			"eth_newBlockFilter",
-			"eth_newFilter",
-			"eth_newPendingTransactionFilter",
-		},
-		FilterMethods: []string{
-			"eth_getFilterChanges",
-			"eth_getFilterLogs",
-		},
-		UninstallFilterMethods: []string{
-			"eth_uninstallFilter",
-		},
-
-		// subscriptions
-		SubscriptionIDExtractor: jsonrpc.EthSubscriptionIDExtractor,
-		SubscribeMethods: []string{
-			"eth_subscribe",
-		},
-		UnsubscribeMethods: []string{
-			"eth_unsubscribe",
-		},
 	}
 
 	p := proxy.NewJsonRpcProxy(app, cfg)
@@ -136,7 +111,6 @@ func initEthHandler(app *app.App) error {
 		chain,
 		httpSupportedMethods,
 		wsSupportedMethods,
-		cfg.SubscribeMethods,
 		p,
 		app,
 	)

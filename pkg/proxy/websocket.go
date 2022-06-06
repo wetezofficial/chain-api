@@ -5,6 +5,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"github.com/gorilla/websocket"
@@ -34,6 +35,10 @@ func (u *UpstreamWebSocket) Close() error {
 }
 
 func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq *jsonrpc.JsonRpcRequest) error {
+	if rawreq.IsBatchCall() {
+		return u.conn.WriteJSON(rawreq)
+	}
+
 	p := u.proxy
 	req, err := p.fromRequest(rawreq)
 	if err != nil {
@@ -69,10 +74,16 @@ func (u *UpstreamWebSocket) run() {
 			return
 		}
 
+		rawresp = bytes.TrimSpace(rawresp)
+		if rawresp[0] == '[' && rawresp[len(rawresp)-1] == ']' {
+			// batch call response
+			u.client.send <- RespData{Data: rawresp}
+			continue
+		}
+
 		//req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
 		upstreamResp := UpstreamJsonRpcResponse{}
 		if err = json.Unmarshal(rawresp, &upstreamResp); err != nil {
-			//req.logger.Error("failed to cache result", zap.Error(err))
 			return
 		}
 
@@ -84,31 +95,17 @@ func (u *UpstreamWebSocket) run() {
 		}
 
 		req, ok := u.requests[upstreamResp.ID]
-		if !ok {
-			//req.logger.Error("could not found request", zap.Error(err))
-			return
-		}
-		delete(u.requests, upstreamResp.ID)
+		if ok {
+			delete(u.requests, upstreamResp.ID)
 
-		// step3. Cache if it is a valid result and cacheable
-		if req.cacheKey != nil && upstreamResp.Result != nil {
-			if err = p.CacheFn(req, upstreamResp.Result); err != nil {
-				req.logger.Error("failed to cache result", zap.Error(err))
+			// step3. Cache if it is a valid result and cacheable
+			if req.cacheKey != nil && upstreamResp.Result != nil {
+				if err = p.CacheFn(req, upstreamResp.Result); err != nil {
+					req.logger.Error("failed to cache result", zap.Error(err))
+				}
 			}
 		}
 
-		// remap request id
-		resp := jsonrpc.JsonRpcResponse{
-			ID:             req.JsonRpcRequest.ID,
-			JsonRpcVersion: upstreamResp.JsonRpcVersion,
-			Error:          upstreamResp.Error,
-			Result:         upstreamResp.Result,
-		}
-		data, err := json.Marshal(resp)
-		if err != nil {
-			req.logger.Error("failed to marshal resp", zap.Error(err))
-			return
-		}
-		u.client.send <- RespData{Data: data}
+		u.client.send <- RespData{Data: rawresp}
 	}
 }

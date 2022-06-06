@@ -55,17 +55,6 @@ type JsonRpcProxyConfig struct {
 	CacheTime        time.Duration
 	ChainID          uint8
 	CacheableMethods []string
-
-	// subscriptions
-	SubscribeMethods        []string
-	SubscriptionIDExtractor func(*jsonrpc.JsonRpcRequest) (string, error)
-	UnsubscribeMethods      []string
-
-	// filters
-	CreateFilterMethods    []string
-	FilterMethods          []string
-	UninstallFilterMethods []string
-	FilterIDExtractor      func(*jsonrpc.JsonRpcRequest) (string, error)
 }
 
 type JsonRpcProxy struct {
@@ -94,6 +83,10 @@ func (p *JsonRpcProxy) fromRequest(rawreq *jsonrpc.JsonRpcRequest) (*request, er
 }
 
 func (p *JsonRpcProxy) HttpProxy(ctx context.Context, logger *zap.Logger, rawreq *jsonrpc.JsonRpcRequest) ([]byte, error) {
+	if rawreq.IsBatchCall() {
+		return p.DoHttpUpstreamCall(rawreq)
+	}
+
 	req, err := p.fromRequest(rawreq)
 	if err != nil {
 		return nil, err
@@ -112,10 +105,12 @@ func (p *JsonRpcProxy) HttpProxy(ctx context.Context, logger *zap.Logger, rawreq
 
 // fromCache 尝试从缓存中读取数据
 func (p *JsonRpcProxy) fromCache(req *request) ([]byte, error) {
+	singleReq := req.GetSingleCall()
+
 	// step1. Try to get result from cache
-	hash := md5.Sum(req.Params)
-	cacheKey := fmt.Sprintf("rpc:%d:%s:%s", p.cfg.ChainID, req.Method, hex.EncodeToString(hash[:]))
-	cacheable := utils.In(req.Method, p.cfg.CacheableMethods)
+	hash := md5.Sum(singleReq.Params)
+	cacheKey := fmt.Sprintf("rpc:%d:%s:%s", p.cfg.ChainID, singleReq.Method, hex.EncodeToString(hash[:]))
+	cacheable := utils.In(singleReq.Method, p.cfg.CacheableMethods)
 	if cacheable {
 		req.cacheKey = &cacheKey
 		req.cacheFn = p.CacheFn
@@ -128,8 +123,8 @@ func (p *JsonRpcProxy) fromCache(req *request) ([]byte, error) {
 		// 获取到了内容，则直接返回
 		if len(res) > 0 {
 			resp := jsonrpc.JsonRpcResponse{
-				ID:             req.JsonRpcRequest.ID,
-				JsonRpcVersion: req.JsonRpcRequest.JsonRpcVersion,
+				ID:             singleReq.ID,
+				JsonRpcVersion: singleReq.JsonRpcVersion,
 				Result:         res,
 			}
 			return json.Marshal(resp)
@@ -143,7 +138,7 @@ func (p *JsonRpcProxy) CacheFn(req *request, result []byte) error {
 	return p.rdb.Set(context.TODO(), *req.cacheKey, result, p.cfg.CacheTime).Err()
 }
 
-func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
+func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, error) {
 	rawreq, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -160,9 +155,15 @@ func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 		return nil, err
 	}
 
-	req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
+	return buff.Bytes(), nil
+}
+
+func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
+	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest)
+	req.logger.Debug("new upstream response", zap.ByteString("resp", resp))
+
 	upstreamResp := UpstreamJsonRpcResponse{}
-	if err = json.Unmarshal(buff.Bytes(), &upstreamResp); err != nil {
+	if err = json.Unmarshal(resp, &upstreamResp); err != nil {
 		return nil, err
 	}
 
@@ -173,16 +174,7 @@ func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 		}
 	}
 
-	// remap request id
-	resp := jsonrpc.JsonRpcResponse{
-		ID:             req.JsonRpcRequest.ID,
-		JsonRpcVersion: upstreamResp.JsonRpcVersion,
-		Error:          upstreamResp.Error,
-		Result:         upstreamResp.Result,
-	}
-
-	// step4. serialize response data
-	return json.Marshal(resp)
+	return resp, nil
 }
 
 func (p *JsonRpcProxy) NewUpstreamWS(client *Client) (*UpstreamWebSocket, error) {

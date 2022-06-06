@@ -20,16 +20,6 @@ var ParseError = &JsonRpcErr{
 	Message: "Parse error",
 }
 
-var FilterNotFoundError = &JsonRpcErr{
-	Code:    -32000,
-	Message: "filter not found",
-}
-
-var SubscriptionNotFoundError = &JsonRpcErr{
-	Code:    -32000,
-	Message: "subscription not found",
-}
-
 func NewInternalServerError(id interface{}) *JsonRpcErr {
 	return &JsonRpcErr{
 		ID:      id,

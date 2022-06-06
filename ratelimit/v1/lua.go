@@ -1,8 +1,26 @@
 package ratelimitv1
 
-import "github.com/go-redis/redis/v8"
+import (
+	"context"
+	"fmt"
+	"github.com/go-redis/redis/v8"
+	"time"
+)
 
-// RateLimitScript is a redis lua script for throttling
+func RedisAllow(ctx context.Context, rdb redis.Scripter, chainID uint8, apiKey string, t time.Time, n int, revert bool) (int, error) {
+	if n <= 0 {
+		return 0, fmt.Errorf("n must be greater than 0")
+	}
+
+	r := "0"
+	if revert {
+		r = "1"
+	}
+
+	return rateLimitScript.Run(ctx, rdb, []string{apiKey}, chainID, t.Day(), n, r).Int()
+}
+
+// rateLimitScript is a redis lua script for throttling
 //   day_rate_limit_key expire in 1.5 days
 // INPUT: NO KEYS, 3 arguments
 // return values
@@ -10,11 +28,13 @@ import "github.com/go-redis/redis/v8"
 // -1 key not exist
 // -2 exceed second limitation
 // -3 exceed day limitation
-var RateLimitScript = redis.NewScript(`
+var rateLimitScript = redis.NewScript(`
 local api_key     	= KEYS[1]
 
 local chain_id 		= ARGV[1]
 local day	   		= ARGV[2]
+local n	   		    = ARGV[3]
+local revert	    = ARGV[4]
 
 local sec_quota_key = "q:s:" .. chain_id .. ":" .. api_key
 local day_quota_key = "q:d:" .. chain_id .. ":" .. api_key
@@ -27,7 +47,7 @@ if not sec_quota then
   return -1
 end
 
-local current = redis.call("INCR", sec_rate_limit_key)
+local current = redis.call("INCRBY", sec_rate_limit_key, n)
 if current == 1 then
     redis.call("EXPIRE",sec_rate_limit_key,1)
 end
@@ -41,12 +61,15 @@ if not day_quota then
   return -1
 end
 
-current = redis.call("INCR", day_rate_limit_key)
-if current == 1 then
+current = redis.call("INCRBY", day_rate_limit_key, n)
+if current == n then
     redis.call("EXPIRE", day_rate_limit_key, 129600)
 end
 
 if current > day_quota then
+  if revert == "1" then
+    redis.call("DECRBY", day_rate_limit_key, n)
+  end
   return -3
 end
 

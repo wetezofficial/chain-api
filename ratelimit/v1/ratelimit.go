@@ -32,17 +32,25 @@ func NewRateLimiter(rdb redis.UniversalClient, logger *zap.Logger, skipper func(
 var ExceededRateLimitError = fmt.Errorf("exceeded rate limit")
 var ApiKeyNotExistError = fmt.Errorf("api key not exist")
 
-func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string) error {
+func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n int) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 
+	revert := true // 若使用超限，则 revert 超过的部分，不然显示的时候会出现使用量大于限制的情况
+	whitelist := false
+	if l.skipper != nil && l.skipper(chainID, apiKey) {
+		whitelist = true
+		revert = false
+	}
+
 	apiKey = "{" + apiKey + "}" // use api key as hashtag for sharding
-	res, err := RateLimitScript.Run(ctx, l.rdb, []string{apiKey}, chainID, time.Now().Day()).Int()
+
+	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, time.Now(), n, revert)
 	if err != nil {
 		logger.Error("failed to run rate limit script", zap.Error(err))
 		return err
 	}
 
-	if l.skipper != nil && l.skipper(chainID, apiKey[1:len(apiKey)-1]) {
+	if whitelist {
 		return nil
 	}
 
