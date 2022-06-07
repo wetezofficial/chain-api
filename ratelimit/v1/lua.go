@@ -17,6 +17,8 @@ func RedisAllow(ctx context.Context, rdb redis.Scripter, chainID uint8, apiKey s
 		r = "1"
 	}
 
+	// use api key as hashtag for sharding
+	apiKey = "{" + apiKey + "}"
 	return rateLimitScript.Run(ctx, rdb, []string{apiKey}, chainID, t.Day(), n, r).Int()
 }
 
@@ -68,7 +70,7 @@ end
 
 if current > day_quota then
   if revert == "1" then
-    redis.call("DECRBY", day_rate_limit_key, n)
+    redis.call("DECRBY", day_rate_limit_key, current - day_quota)
   end
   return -3
 end

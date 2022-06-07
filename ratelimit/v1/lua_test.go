@@ -1,114 +1,207 @@
 package ratelimitv1
 
-//func TestRateLimitDay(t *testing.T) {
-//	rdb := redis.NewClient(&redis.Options{
-//		Addr: "localhost:6379",
-//	})
-//	ctx := context.TODO()
-//	rdb.FlushDB(ctx)
-//
-//	apikey := "test_rate_limit_day_apikey"
-//	// Initialize configuration
-//	numPerSecond := 1000
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:s", apikey), numPerSecond, 0)
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:d", apikey), numPerSecond*5, 0)
-//
-//	for count := 1; count <= 5; count++ {
-//		for i := 0; i < numPerSecond; i++ {
-//			res, err := RateLimitScript.Run(ctx, rdb, []string{apikey}).Int()
-//			assert.Nil(t, err)
-//			assert.Equal(t, Allow, res)
-//			time.Sleep(time.Second / time.Duration(numPerSecond))
-//		}
-//
-//		dayLimitKey := "day:" + apikey
-//		dayLimit, err := rdb.Get(ctx, dayLimitKey).Int()
-//		assert.Nil(t, err)
-//		assert.Equal(t, numPerSecond*count, dayLimit)
-//	}
-//
-//	for i := 0; i < numPerSecond*5; i++ {
-//		res, err := RateLimitScript.Run(ctx, rdb, nil, apikey).Int()
-//		assert.Nil(t, err)
-//		assert.GreaterOrEqual(t, ExceedSecondLimit, res)
-//	}
-//}
-//
-//func TestRateLimitSecond(t *testing.T) {
-//	rdb := redis.NewClient(&redis.Options{
-//		Addr: "localhost:6379",
-//	})
-//	ctx := context.TODO()
-//	rdb.FlushDB(ctx)
-//
-//	apikey := "key1"
-//	// Initialize configuration
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:s", apikey), "5", 0)
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:d", apikey), "5000", 0)
-//
-//	res, err := RateLimitScript.Run(context.TODO(), rdb, nil, "notexist").Int()
-//	assert.Nil(t, err)
-//	assert.Equal(t, NotExist, res)
-//
-//	for i := 0; i < 10; i++ {
-//		res, err = RateLimitScript.Run(context.TODO(), rdb, nil, apikey).Int()
-//		assert.Nil(t, err)
-//		if i < 5 {
-//			assert.Equal(t, Allow, res)
-//		} else {
-//			assert.Equal(t, ExceedSecondLimit, res)
-//		}
-//	}
-//
-//	dayLimitKey := "day:" + apikey
-//	dayLimit, err := rdb.Get(ctx, dayLimitKey).Int()
-//	assert.Nil(t, err)
-//	assert.Equal(t, 5, dayLimit)
-//
-//	time.Sleep(time.Second)
-//
-//	for i := 0; i < 10; i++ {
-//		res, err := RateLimitScript.Run(context.TODO(), rdb, nil, apikey).Int()
-//		assert.Nil(t, err)
-//		if i < 5 {
-//			assert.Equal(t, Allow, res)
-//		} else {
-//			assert.Equal(t, ExceedSecondLimit, res)
-//		}
-//	}
-//
-//	dayLimit, err = rdb.Get(ctx, dayLimitKey).Int()
-//	assert.Nil(t, err)
-//	assert.Equal(t, 10, dayLimit)
-//}
-//
-//func BenchmarkRateLimit(b *testing.B) {
-//	rdb := redis.NewClient(&redis.Options{
-//		Addr: "localhost:6379",
-//	})
-//	ctx := context.TODO()
-//	rdb.FlushDB(ctx)
-//
-//	apikey := "key1"
-//	// Initialize configuration
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:s", apikey), "5", 0)
-//	rdb.Set(ctx, fmt.Sprintf("conf:%s:d", apikey), "5000", 0)
-//
-//	b.ResetTimer()
-//	for i := 0; i < b.N; i++ {
-//		res, err := RateLimitScript.Run(context.TODO(), rdb, nil, apikey).Int()
-//		assert.Nil(b, err)
-//		if res == Allow {
-//			_ = res
-//		}
-//		if res == NotExist {
-//			_ = res
-//		}
-//		if res == ExceedSecondLimit {
-//			_ = res
-//		}
-//		if res == ExceedDayLimit {
-//			_ = res
-//		}
-//	}
-//}
+import (
+	"context"
+	"errors"
+	"github.com/go-redis/redis/v8"
+	"github.com/hashicorp/go-uuid"
+	"github.com/stretchr/testify/assert"
+	"math/rand"
+	"starnet/starnet/dao"
+	"testing"
+	"time"
+)
+
+func TestCount(t *testing.T) {
+	t.Parallel()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	ctx := context.TODO()
+
+	var chainID uint8 = 1
+	rateLimitDao := dao.NewRateLimitDao(rdb)
+
+	genAndSetupApikey := func(secQuota, dayQuota int) string {
+	FnBegin:
+		apikey, err := uuid.GenerateUUID()
+		assert.Nil(t, err)
+
+		// Initialize configuration
+		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		assert.Nil(t, err)
+
+		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		if !errors.Is(err, redis.Nil) {
+			// 若key已经存在，则重新生成一个作为测试
+			goto FnBegin
+		}
+		return apikey
+	}
+
+	t.Run("test with count", func(t *testing.T) {
+		secQuota := 10
+		dayQuota := 50
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+
+		total := 0
+		for i := 0; i < 5; i++ {
+			n := i%secQuota + 1
+			total += n
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), n, true)
+			assert.Nil(t, err)
+			_ = res
+			time.Sleep(time.Second / time.Duration(secQuota) * time.Duration(n))
+		}
+
+		dayUsage, err := rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		assert.Nil(t, err)
+		assert.Equal(t, int64(total), dayUsage)
+	})
+}
+
+func TestRevert(t *testing.T) {
+	t.Parallel()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	ctx := context.TODO()
+
+	var chainID uint8 = 1
+	rateLimitDao := dao.NewRateLimitDao(rdb)
+
+	genAndSetupApikey := func(secQuota, dayQuota int) string {
+	FnBegin:
+		apikey, err := uuid.GenerateUUID()
+		assert.Nil(t, err)
+
+		// Initialize configuration
+		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		assert.Nil(t, err)
+
+		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		if !errors.Is(err, redis.Nil) {
+			// 若key已经存在，则重新生成一个作为测试
+			goto FnBegin
+		}
+		return apikey
+	}
+
+	t.Run("test revert", func(t *testing.T) {
+		secQuota := 50
+		dayQuota := 50
+		exceed := 5
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+
+		for i := 0; i < dayQuota+exceed; i++ {
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+			assert.Nil(t, err)
+			_ = res
+			time.Sleep(time.Second / time.Duration(secQuota))
+		}
+
+		dayUsage, err := rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		assert.Nil(t, err)
+		assert.Equal(t, int64(dayQuota), dayUsage)
+	})
+
+	t.Run("test not revert", func(t *testing.T) {
+		secQuota := 50
+		dayQuota := 50
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+
+		var i = 0
+		for ; i < dayQuota+5; i++ {
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, false)
+			assert.Nil(t, err)
+			_ = res
+			time.Sleep(time.Second / time.Duration(secQuota))
+		}
+
+		dayUsage, err := rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		assert.Nil(t, err)
+		assert.Equal(t, int64(i), dayUsage)
+	})
+}
+
+func TestExceeded(t *testing.T) {
+	t.Parallel()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+	ctx := context.TODO()
+
+	var chainID uint8 = 1
+	rateLimitDao := dao.NewRateLimitDao(rdb)
+
+	genAndSetupApikey := func(secQuota, dayQuota int) string {
+	FnBegin:
+		apikey, err := uuid.GenerateUUID()
+		assert.Nil(t, err)
+
+		// Initialize configuration
+		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		assert.Nil(t, err)
+
+		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		if !errors.Is(err, redis.Nil) {
+			// 若key已经存在，则重新生成一个作为测试
+			goto FnBegin
+		}
+		return apikey
+	}
+
+	t.Run("test exceeded second quota", func(t *testing.T) {
+		secQuota := 10
+		apikey := genAndSetupApikey(secQuota, 1000)
+
+		now := time.Now()
+		for i := 0; i < secQuota; i++ {
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, now, 1, true)
+			assert.Nil(t, err)
+			assert.Equal(t, Allow, res)
+		}
+
+		res, err := RedisAllow(ctx, rdb, chainID, apikey, now, 1, true)
+		assert.Nil(t, err)
+		assert.Equal(t, ExceedSecondLimit, res)
+	})
+
+	t.Run("test exceeded day quota", func(t *testing.T) {
+		secQuota := 200
+		dayQuota := 500
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+
+		for i := 0; i < dayQuota; i++ {
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+			assert.Nil(t, err)
+			assert.Equal(t, Allow, res)
+			time.Sleep(time.Second / time.Duration(secQuota))
+		}
+
+		res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+		assert.Nil(t, err)
+		assert.Equal(t, ExceedDayLimit, res)
+	})
+
+	t.Run("test get day usage", func(t *testing.T) {
+		secQuota := 200
+		dayQuota := 500
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+		n := rand.Intn(dayQuota - 1)
+
+		for i := 0; i < n; i++ {
+			res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+			assert.Nil(t, err)
+			assert.Equal(t, Allow, res)
+			time.Sleep(time.Second / time.Duration(secQuota))
+		}
+
+		dayUsage, err := rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
+		assert.Nil(t, err)
+		assert.Equal(t, int64(n), dayUsage)
+	})
+}

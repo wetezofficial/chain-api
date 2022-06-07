@@ -42,8 +42,6 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 		revert = false
 	}
 
-	apiKey = "{" + apiKey + "}" // use api key as hashtag for sharding
-
 	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, time.Now(), n, revert)
 	if err != nil {
 		logger.Error("failed to run rate limit script", zap.Error(err))
