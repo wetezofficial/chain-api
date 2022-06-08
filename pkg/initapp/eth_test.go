@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/websocket"
 	"github.com/hashicorp/go-uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/viper"
@@ -32,9 +33,10 @@ func TestEth(t *testing.T) {
 
 type ethRpcSuite struct {
 	suite.Suite
-	cfg          *config.Config
-	App          *app.App
-	rateLimitDao daoInterface.RateLimitDao
+	cfg            *config.Config
+	App            *app.App
+	rateLimitDao   daoInterface.RateLimitDao
+	httpTestServer *httptest.Server
 }
 
 func (s *ethRpcSuite) TestSingleCall() {
@@ -90,6 +92,68 @@ func (s *ethRpcSuite) TestBatchCall() {
 	}
 }
 
+func (s *ethRpcSuite) TestWebSocketBatchCall() {
+	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+	ws := s.createWsConn(apikey)
+	defer ws.Close()
+
+	// write
+	err := ws.WriteMessage(websocket.TextMessage, []byte(`[{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}]`))
+	assert.Nil(s.T(), err, err)
+
+	// read
+	_, msg, err := ws.ReadMessage()
+	assert.Nil(s.T(), err, err)
+	var resp []jsonrpc.JsonRpcResponse
+	err = json.Unmarshal(msg, &resp)
+	assert.Nil(s.T(), err, err)
+	fmt.Println(string(msg))
+}
+
+func (s *ethRpcSuite) TestWebSocketConcurrent() {
+	secQuota := 50
+	apikey := s.genAndSetupApikey(secQuota, 1000, 1, time.Now())
+	ws := s.createWsConn(apikey)
+
+	go func() {
+		var err error
+		for i := 0; i < secQuota; i++ {
+			// write
+			err = ws.WriteMessage(websocket.TextMessage, []byte(`{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}`))
+			assert.Nil(s.T(), err, err)
+		}
+	}()
+
+	for i := 0; i < secQuota; i++ {
+		// read
+		_, msg, err := ws.ReadMessage()
+		assert.Nil(s.T(), err, err)
+		var resp jsonrpc.JsonRpcResponse
+		err = json.Unmarshal(msg, &resp)
+		assert.Nil(s.T(), err, err)
+		fmt.Println(string(msg))
+	}
+}
+
+func (s *ethRpcSuite) TestWebSocket() {
+	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+	ws := s.createWsConn(apikey)
+
+	// write
+	err := ws.WriteMessage(websocket.TextMessage, []byte(`{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}`))
+	assert.Nil(s.T(), err, err)
+
+	// read
+	_, msg, err := ws.ReadMessage()
+	assert.Nil(s.T(), err, err)
+	var resp jsonrpc.JsonRpcResponse
+	err = json.Unmarshal(msg, &resp)
+	assert.Nil(s.T(), err, err)
+	fmt.Println(string(msg))
+	err = ws.Close()
+	assert.Nil(s.T(), err, err)
+}
+
 func (s *ethRpcSuite) SetupSuite() {
 	s.loadConfig()
 
@@ -136,6 +200,18 @@ func (s *ethRpcSuite) SetupSuite() {
 	}
 	_app.HttpServer = router.NewRouter(&_app)
 	s.App = &_app
+	s.httpTestServer = httptest.NewServer(_app.HttpServer)
+}
+
+func (s *ethRpcSuite) TearDownSuite() {
+	s.httpTestServer.Close()
+}
+
+func (s *ethRpcSuite) createWsConn(apikey string) *websocket.Conn {
+	wsURL := "ws" + strings.TrimPrefix(s.httpTestServer.URL, "http") + "/ws/eth/v1/" + apikey
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	assert.Nil(s.T(), err, err)
+	return ws
 }
 
 func (s *ethRpcSuite) genAndSetupApikey(secQuota, dayQuota, chainID int, t time.Time) string {

@@ -20,6 +20,7 @@ import (
 	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/pkg/utils"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -177,7 +178,7 @@ func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 	return resp, nil
 }
 
-func (p *JsonRpcProxy) NewUpstreamWS(client *Client) (*UpstreamWebSocket, error) {
+func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*UpstreamWebSocket, error) {
 	upstream, _, err := websocket.DefaultDialer.Dial(p.cfg.WsUpstream, nil)
 	if err != nil {
 		return nil, err
@@ -186,7 +187,9 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client) (*UpstreamWebSocket, error)
 	u := &UpstreamWebSocket{
 		conn:     upstream,
 		client:   client,
+		logger:   logger,
 		proxy:    p,
+		mutex:    new(sync.Mutex),
 		requests: make(map[uint64]*request),
 	}
 	go u.run()

@@ -188,7 +188,7 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 	}()
 
 	client := proxy.NewClient(ws, sendCh)
-	upstreamConn, err := h.proxy.NewUpstreamWS(client)
+	upstreamConn, err := h.proxy.NewUpstreamWS(client, logger)
 	if err != nil {
 		return err
 	}

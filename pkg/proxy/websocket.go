@@ -11,14 +11,15 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"starnet/chain-api/pkg/jsonrpc"
+	"sync"
 )
 
 type Client struct {
 	conn *websocket.Conn
-	send chan RespData
+	send chan<- RespData
 }
 
-func NewClient(conn *websocket.Conn, send chan RespData) *Client {
+func NewClient(conn *websocket.Conn, send chan<- RespData) *Client {
 	return &Client{conn: conn, send: send}
 }
 
@@ -26,7 +27,9 @@ type UpstreamWebSocket struct {
 	conn   *websocket.Conn
 	client *Client
 	proxy  *JsonRpcProxy
+	logger *zap.Logger
 
+	mutex    *sync.Mutex
 	requests map[uint64]*request
 }
 
@@ -57,7 +60,9 @@ func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq
 		return nil
 	}
 
+	u.mutex.Lock()
 	u.requests[req.ID] = req
+	u.mutex.Unlock()
 	return u.conn.WriteJSON(req)
 }
 
@@ -70,9 +75,9 @@ func (u *UpstreamWebSocket) run() {
 	for {
 		_, rawresp, err := ws.ReadMessage()
 		if err != nil {
-			//logger.Info("ws.ReadMessage", zap.Error(err))
 			return
 		}
+		u.logger.Debug("got resp from upstream", zap.ByteString("rawresp", rawresp))
 
 		rawresp = bytes.TrimSpace(rawresp)
 		if rawresp[0] == '[' && rawresp[len(rawresp)-1] == ']' {
@@ -94,9 +99,14 @@ func (u *UpstreamWebSocket) run() {
 			continue
 		}
 
+		u.mutex.Lock()
 		req, ok := u.requests[upstreamResp.ID]
+		u.mutex.Unlock()
 		if ok {
+
+			u.mutex.Lock()
 			delete(u.requests, upstreamResp.ID)
+			u.mutex.Unlock()
 
 			// step3. Cache if it is a valid result and cacheable
 			if req.cacheKey != nil && upstreamResp.Result != nil {
