@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"starnet/chain-api/pkg/jsonrpc"
 	"sync"
+	"time"
 )
 
 type Client struct {
@@ -69,6 +70,14 @@ func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq
 func (u *UpstreamWebSocket) run() {
 	defer u.conn.Close()
 	defer u.client.conn.Close()
+
+	u.conn.SetPongHandler(func(appData string) error {
+		return u.client.conn.WriteControl(websocket.PongMessage, nil, time.Now().Add(10*time.Second))
+	})
+
+	u.client.conn.SetPingHandler(func(appData string) error {
+		return u.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second))
+	})
 
 	p := u.proxy
 	ws := u.conn
