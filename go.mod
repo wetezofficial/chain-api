@@ -6,6 +6,7 @@ replace starnet/starnet => ../starnet
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/ethereum/go-ethereum v1.10.18 // indirect
 	github.com/go-openapi/spec v0.20.5
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/websocket v1.5.0

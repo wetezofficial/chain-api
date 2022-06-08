@@ -33,16 +33,8 @@ func NewApp(configFile string) *app.App {
 		log.Fatalf("获取apikey白名单出错: %s\n", err.Error())
 	}
 	fmt.Println("api keys whitelist:", apiKeysWhitelist)
-	skipper := func(_ uint8, apiKey string) bool {
-		for _, k := range apiKeysWhitelist {
-			if k == apiKey {
-				return true
-			}
-		}
-		return false
-	}
 
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, skipper)
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, apiKeysWhitelist)
 	if err != nil {
 		logger.Fatal("fail to get rate limiter", zap.Error(err))
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/go-uuid"
@@ -12,10 +13,12 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/initapp/chainlinktest"
 	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/ratelimit/v1"
 	"starnet/chain-api/router"
@@ -92,6 +95,26 @@ func (s *ethRpcSuite) TestBatchCall() {
 	}
 }
 
+func (s *ethRpcSuite) TestWhitelist() {
+	chainID := 1
+	apikey := whitelistApikey
+
+	key := fmt.Sprintf("d:%d:{%s}:%d", chainID, apikey, time.Now().Day())
+	err := s.App.Rdb.Del(context.Background(), key).Err()
+	assert.Nil(s.T(), err, err)
+
+	c, rec := s.newHttpContext(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
+
+	// Assertions
+	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
+		assert.Equal(s.T(), http.StatusOK, rec.Code)
+
+		usage, err := s.rateLimitDao.GetDayUsage(apikey, chainID, time.Now())
+		assert.Nil(s.T(), err, err)
+		assert.Equal(s.T(), int64(2), usage)
+	}
+}
+
 func (s *ethRpcSuite) TestWebSocketBatchCall() {
 	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
 	ws := s.createWsConn(apikey)
@@ -154,6 +177,58 @@ func (s *ethRpcSuite) TestWebSocket() {
 	assert.Nil(s.T(), err, err)
 }
 
+func (s *ethRpcSuite) TestHeadByNumber() {
+	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+	ws := s.createWsConn(apikey)
+
+	// write
+	err := ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"method":"eth_getBlockByNumber","params":["latest", false],"id":1,"jsonrpc":"2.0"}`)))
+	assert.Nil(s.T(), err, err)
+
+	// read
+	_, msg, err := ws.ReadMessage()
+	assert.Nil(s.T(), err, err)
+	var resp jsonrpc.JsonRpcResponse
+	err = json.Unmarshal(msg, &resp)
+	assert.Nil(s.T(), err, err)
+	fmt.Println(string(msg))
+
+	head := new(chainlinktest.Head)
+	err = json.Unmarshal(resp.Result, &head)
+	assert.Nil(s.T(), err, err)
+
+	err = ws.Close()
+	assert.Nil(s.T(), err, err)
+}
+
+func (s *ethRpcSuite) TestWebsocketGetBalance() {
+	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+	ws := s.createWsConn(apikey)
+
+	// write
+	err := ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"method":"eth_getBalance","params":["0x5a6fCc02D8c50eA58a22115A7c4608b723030016", "latest"],"id":1,"jsonrpc":"2.0"}`)))
+	assert.Nil(s.T(), err, err)
+
+	// read
+	_, msg, err := ws.ReadMessage()
+	assert.Nil(s.T(), err, err)
+	var resp jsonrpc.JsonRpcResponse
+	err = json.Unmarshal(msg, &resp)
+	assert.Nil(s.T(), err, err)
+	fmt.Println(string(msg))
+
+	var result hexutil.Big
+	err = json.Unmarshal(resp.Result, &result)
+	assert.Nil(s.T(), err, err)
+	bigint := (*big.Int)(&result)
+	fmt.Println(bigint.String())
+
+	err = ws.Close()
+	assert.Nil(s.T(), err, err)
+}
+
+const whitelistApikey = "xxx"
+
 func (s *ethRpcSuite) SetupSuite() {
 	s.loadConfig()
 
@@ -163,20 +238,9 @@ func (s *ethRpcSuite) SetupSuite() {
 	rdb := starnetRedis.New(s.cfg.Redis)
 
 	var rateLimitDao daoInterface.RateLimitDao = dao.NewRateLimitDao(rdb)
-	apiKeysWhitelist, err := rateLimitDao.GetApiKeysWhitelist()
-	assert.Nil(s.T(), err, "获取apikey白名单出错")
 	s.rateLimitDao = rateLimitDao
 
-	skipper := func(_ uint8, apiKey string) bool {
-		for _, k := range apiKeysWhitelist {
-			if k == apiKey {
-				return true
-			}
-		}
-		return false
-	}
-
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, skipper)
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, []string{whitelistApikey})
 	assert.Nil(s.T(), err, "fail to get rate limiter")
 
 	_app := app.App{
@@ -205,6 +269,9 @@ func (s *ethRpcSuite) SetupSuite() {
 
 func (s *ethRpcSuite) TearDownSuite() {
 	s.httpTestServer.Close()
+}
+
+func (s *ethRpcSuite) TearDownTest() {
 }
 
 func (s *ethRpcSuite) createWsConn(apikey string) *websocket.Conn {
@@ -252,6 +319,7 @@ listen = "127.0.0.1:1324"
 
 [upstream]
 eth.http = "https://rinkeby-light.eth.linkpool.io"
+#eth.ws = "wss://mainnet-rpc.wetez.io/ws/eth/v1/99be6f4c5cf8fb61180484c4bd545241"
 eth.ws = "wss://rinkeby-light.eth.linkpool.io/ws"
 
 arbitrum.http = "https://rinkeby.arbitrum.io/rpc"
