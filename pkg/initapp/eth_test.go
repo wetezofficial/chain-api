@@ -205,25 +205,34 @@ func (s *ethRpcSuite) TestWebsocketGetBalance() {
 	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
 	ws := s.createWsConn(apikey)
 
-	// write
-	err := ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"method":"eth_getBalance","params":["0x5a6fCc02D8c50eA58a22115A7c4608b723030016", "latest"],"id":1,"jsonrpc":"2.0"}`)))
-	assert.Nil(s.T(), err, err)
+	var firstTimeVal *big.Int
+	for i := 0; i <= 3; i++ {
+		var val *big.Int
+		// write
+		err := ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"method":"eth_getBalance","params":["0x5a6fCc02D8c50eA58a22115A7c4608b723030016", "latest"],"id":1,"jsonrpc":"2.0"}`)))
+		assert.Nil(s.T(), err, err)
 
-	// read
-	_, msg, err := ws.ReadMessage()
-	assert.Nil(s.T(), err, err)
-	var resp jsonrpc.JsonRpcResponse
-	err = json.Unmarshal(msg, &resp)
-	assert.Nil(s.T(), err, err)
-	fmt.Println(string(msg))
+		// read
+		_, msg, err := ws.ReadMessage()
+		assert.Nil(s.T(), err, err)
+		var resp jsonrpc.JsonRpcResponse
+		err = json.Unmarshal(msg, &resp)
+		assert.Nil(s.T(), err, err)
+		fmt.Println(string(msg))
 
-	var result hexutil.Big
-	err = json.Unmarshal(resp.Result, &result)
-	assert.Nil(s.T(), err, err)
-	bigint := (*big.Int)(&result)
-	fmt.Println(bigint.String())
+		var result hexutil.Big
+		err = json.Unmarshal(resp.Result, &result)
+		assert.Nil(s.T(), err, err)
+		val = (*big.Int)(&result)
+		fmt.Println(val.String())
+		if i == 0 {
+			firstTimeVal = val
+		} else {
+			assert.Equal(s.T(), firstTimeVal.String(), val.String())
+		}
+	}
 
-	err = ws.Close()
+	err := ws.Close()
 	assert.Nil(s.T(), err, err)
 }
 
@@ -318,8 +327,9 @@ func (s *ethRpcSuite) loadConfig() {
 listen = "127.0.0.1:1324"
 
 [upstream]
+#eth.http = "https://mainnet-rpc.wetez.io/eth/v1/a8403744cd53caeb36bc74b1978cfac2"
 eth.http = "https://rinkeby-light.eth.linkpool.io"
-#eth.ws = "wss://mainnet-rpc.wetez.io/ws/eth/v1/99be6f4c5cf8fb61180484c4bd545241"
+#eth.ws = "wss://mainnet-rpc.wetez.io/ws/eth/v1/a8403744cd53caeb36bc74b1978cfac2"
 eth.ws = "wss://rinkeby-light.eth.linkpool.io/ws"
 
 arbitrum.http = "https://rinkeby.arbitrum.io/rpc"
