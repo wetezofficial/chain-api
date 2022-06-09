@@ -27,6 +27,9 @@ type App struct {
 
 	SolanaHttpHandler HttpHandler
 	SolanaWsHandler   WsHandler
+
+	HscHttpHandler HttpHandler
+	HscWsHandler   WsHandler
 }
 
 func (a *App) Start() {

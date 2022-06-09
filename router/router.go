@@ -33,5 +33,8 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.POST("/solana/v1/:apiKey", app.SolanaHttpHandler.Http)
 	e.GET("/ws/solana/v1/:apiKey", app.SolanaWsHandler.Ws)
 
+	e.POST("/hsc/v1/:apiKey", app.HscHttpHandler.Http)
+	e.GET("/ws/hsc/v1/:apiKey", app.HscWsHandler.Ws)
+
 	return e
 }

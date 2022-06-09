@@ -51,6 +51,7 @@ func NewApp(configFile string) *app.App {
 		initPolygonHandler,
 		initArbitrumHandler,
 		initSolanaHandler,
+		initHscHandler,
 	}
 
 	for _, fn := range initFns {

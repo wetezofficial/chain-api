@@ -26,6 +26,10 @@ type Config struct {
 			Http string `mapstructure:"http"`
 			Ws   string `mapstructure:"ws"`
 		} `mapstructure:"solana"`
+		Hsc struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"hsc"`
 	} `mapstructure:"upstream"`
 
 	Log struct {

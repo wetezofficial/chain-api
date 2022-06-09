@@ -1,5 +1,5 @@
 /*
- * Created by Chengbin Du on 2022/6/7.
+ * Created by Chengbin Du on 2022/6/9.
  */
 
 package initapp
@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +27,7 @@ import (
 	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/ratelimit/v1"
 	"starnet/chain-api/router"
+	"starnet/starnet/constant"
 	"starnet/starnet/dao"
 	"starnet/starnet/dao/interface"
 	"starnet/starnet/pkg/redis"
@@ -34,93 +36,73 @@ import (
 	"time"
 )
 
-func TestEth(t *testing.T) {
-	suite.Run(t, new(ethRpcSuite))
+func TestHsc(t *testing.T) {
+	suite.Run(t, new(hscRpcSuite))
 }
 
-type ethRpcSuite struct {
+type hscRpcSuite struct {
 	suite.Suite
 	cfg            *config.Config
 	App            *app.App
 	rateLimitDao   daoInterface.RateLimitDao
 	httpTestServer *httptest.Server
+	chainID        int
 }
 
-func (s *ethRpcSuite) TestSingleCall() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
-	c, rec := s.newHttpContext(apikey, `{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"}`)
+func (s *hscRpcSuite) TestSingleCall() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
+	respBytes := s.httpRequest(apikey, `{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"}`)
 
-	// Assertions
-	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
-		assert.Equal(s.T(), http.StatusOK, rec.Code)
+	var resp jsonrpc.JsonRpcResponse
+	err := json.Unmarshal(respBytes, &resp)
+	assert.Nil(s.T(), err)
 
-		var resp jsonrpc.JsonRpcResponse
-		err := json.Unmarshal(rec.Body.Bytes(), &resp)
-		assert.Nil(s.T(), err)
-
-		assert.Greater(s.T(), len(resp.Result), 0)
-		respID := (*resp.ID).(float64)
-		assert.Equal(s.T(), 101, int(respID))
-	}
+	assert.Greater(s.T(), len(resp.Result), 0)
+	respID := (*resp.ID).(float64)
+	assert.Equal(s.T(), 101, int(respID))
 }
 
-func (s *ethRpcSuite) TestSingleCallRateLimit() {
-	chainID := 1
-	apikey := s.genAndSetupApikey(10, 1000, chainID, time.Now())
-	c, _ := s.newHttpContext(apikey, `{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"}`)
+func (s *hscRpcSuite) TestSingleCallRateLimit() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
+	_ = s.httpRequest(apikey, `{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"}`)
 
-	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
-		usage, err := s.rateLimitDao.GetDayUsage(apikey, chainID, time.Now())
-		assert.Nil(s.T(), err)
-		assert.Equal(s.T(), int64(1), usage)
-	}
+	usage, err := s.rateLimitDao.GetDayUsage(apikey, int(s.chainID), time.Now())
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), int64(1), usage)
 }
 
-func (s *ethRpcSuite) TestBatchCallRateLimit() {
-	chainID := 1
-	apikey := s.genAndSetupApikey(10, 1000, chainID, time.Now())
-	c, _ := s.newHttpContext(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
+func (s *hscRpcSuite) TestBatchCallRateLimit() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
+	_ = s.httpRequest(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
 
-	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
-		usage, err := s.rateLimitDao.GetDayUsage(apikey, chainID, time.Now())
-		assert.Nil(s.T(), err)
-		assert.Equal(s.T(), int64(2), usage)
-	}
+	usage, err := s.rateLimitDao.GetDayUsage(apikey, int(s.chainID), time.Now())
+	assert.Nil(s.T(), err)
+	assert.Equal(s.T(), int64(2), usage)
 }
 
-func (s *ethRpcSuite) TestBatchCall() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
-	c, rec := s.newHttpContext(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
+func (s *hscRpcSuite) TestBatchCall() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
+	respBytes := s.httpRequest(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
 
-	// Assertions
-	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
-		assert.Equal(s.T(), http.StatusOK, rec.Code)
-		fmt.Println(rec.Body.String())
-	}
+	fmt.Println(string(respBytes))
 }
 
-func (s *ethRpcSuite) TestWhitelist() {
-	chainID := 1
+func (s *hscRpcSuite) TestWhitelist() {
 	apikey := whitelistApikey
 
-	key := fmt.Sprintf("d:%d:{%s}:%d", chainID, apikey, time.Now().Day())
+	key := fmt.Sprintf("d:%d:{%s}:%d", s.chainID, apikey, time.Now().Day())
 	err := s.App.Rdb.Del(context.Background(), key).Err()
 	assert.Nil(s.T(), err, err)
 
-	c, rec := s.newHttpContext(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
+	_ = s.httpRequest(apikey, `[{"method":"eth_blockNumber","params":[],"id":101,"jsonrpc":"2.0"},{"method":"eth_blockNumber","params":[],"id":102,"jsonrpc":"2.0"}]`)
 
-	// Assertions
-	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
-		assert.Equal(s.T(), http.StatusOK, rec.Code)
-
-		usage, err := s.rateLimitDao.GetDayUsage(apikey, chainID, time.Now())
-		assert.Nil(s.T(), err, err)
-		assert.Equal(s.T(), int64(2), usage)
-	}
+	usage, err := s.rateLimitDao.GetDayUsage(apikey, s.chainID, time.Now())
+	assert.Nil(s.T(), err, err)
+	assert.Equal(s.T(), int64(2), usage)
 }
 
-func (s *ethRpcSuite) TestWebSocketBatchCall() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+func (s *hscRpcSuite) TestWebSocketBatchCall() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
 	ws := s.createWsConn(apikey)
 	defer ws.Close()
 
@@ -137,9 +119,9 @@ func (s *ethRpcSuite) TestWebSocketBatchCall() {
 	fmt.Println(string(msg))
 }
 
-func (s *ethRpcSuite) TestWebSocketConcurrent() {
+func (s *hscRpcSuite) TestWebSocketConcurrent() {
 	secQuota := 50
-	apikey := s.genAndSetupApikey(secQuota, 1000, 1, time.Now())
+	apikey := s.genAndSetupApikey(secQuota, 1000, time.Now())
 	ws := s.createWsConn(apikey)
 
 	go func() {
@@ -162,8 +144,8 @@ func (s *ethRpcSuite) TestWebSocketConcurrent() {
 	}
 }
 
-func (s *ethRpcSuite) TestWebSocket() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+func (s *hscRpcSuite) TestWebSocket() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
 	ws := s.createWsConn(apikey)
 
 	// write
@@ -181,8 +163,8 @@ func (s *ethRpcSuite) TestWebSocket() {
 	assert.Nil(s.T(), err, err)
 }
 
-func (s *ethRpcSuite) TestHeadByNumber() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+func (s *hscRpcSuite) TestHeadByNumber() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
 	ws := s.createWsConn(apikey)
 
 	// write
@@ -205,8 +187,8 @@ func (s *ethRpcSuite) TestHeadByNumber() {
 	assert.Nil(s.T(), err, err)
 }
 
-func (s *ethRpcSuite) TestWebsocketGetBalance() {
-	apikey := s.genAndSetupApikey(10, 1000, 1, time.Now())
+func (s *hscRpcSuite) TestWebsocketGetBalance() {
+	apikey := s.genAndSetupApikey(10, 1000, time.Now())
 	ws := s.createWsConn(apikey)
 
 	var firstTimeVal *big.Int
@@ -240,9 +222,8 @@ func (s *ethRpcSuite) TestWebsocketGetBalance() {
 	assert.Nil(s.T(), err, err)
 }
 
-const whitelistApikey = "xxx"
-
-func (s *ethRpcSuite) SetupSuite() {
+func (s *hscRpcSuite) SetupSuite() {
+	s.chainID = int(constant.ChainHSC.ChainID)
 	s.loadConfig()
 
 	logger, err := config.NewLogger(s.cfg)
@@ -281,30 +262,49 @@ func (s *ethRpcSuite) SetupSuite() {
 	s.httpTestServer = httptest.NewServer(_app.HttpServer)
 }
 
-func (s *ethRpcSuite) TearDownSuite() {
+func (s *hscRpcSuite) TearDownSuite() {
 	s.httpTestServer.Close()
 }
 
-func (s *ethRpcSuite) TearDownTest() {
+func (s *hscRpcSuite) TearDownTest() {
 }
 
-func (s *ethRpcSuite) createWsConn(apikey string) *websocket.Conn {
-	wsURL := "ws" + strings.TrimPrefix(s.httpTestServer.URL, "http") + "/ws/eth/v1/" + apikey
+func (s *hscRpcSuite) httpRequest(apikey, body string) []byte {
+	httpURL := s.httpTestServer.URL + "/hsc/v1/" + apikey
+
+	req, err := http.NewRequest(http.MethodPost, httpURL, strings.NewReader(body))
+	assert.Nil(s.T(), err, err)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.Nil(s.T(), err, err)
+
+	ret, err := ioutil.ReadAll(resp.Body)
+	assert.Nil(s.T(), err, err)
+
+	err = resp.Body.Close()
+	assert.Nil(s.T(), err, err)
+
+	return ret
+}
+
+func (s *hscRpcSuite) createWsConn(apikey string) *websocket.Conn {
+	wsURL := "ws" + strings.TrimPrefix(s.httpTestServer.URL, "http") + "/ws/hsc/v1/" + apikey
 	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	assert.Nil(s.T(), err, err)
 	return ws
 }
 
-func (s *ethRpcSuite) genAndSetupApikey(secQuota, dayQuota, chainID int, t time.Time) string {
+func (s *hscRpcSuite) genAndSetupApikey(secQuota, dayQuota int, t time.Time) string {
 FnBegin:
 	apikey, err := uuid.GenerateUUID()
 	assert.Nil(s.T(), err)
 
 	// Initialize configuration
-	err = s.rateLimitDao.SetQuota(apikey, chainID, secQuota, dayQuota)
+	err = s.rateLimitDao.SetQuota(apikey, int(s.chainID), secQuota, dayQuota)
 	assert.Nil(s.T(), err)
 
-	_, err = s.rateLimitDao.GetDayUsage(apikey, chainID, t)
+	_, err = s.rateLimitDao.GetDayUsage(apikey, int(s.chainID), t)
 	if !errors.Is(err, redis.Nil) {
 		// 若key已经存在，则重新生成一个作为测试
 		goto FnBegin
@@ -313,7 +313,7 @@ FnBegin:
 	return apikey
 }
 
-func (s *ethRpcSuite) newHttpContext(apikey string, body string) (echo.Context, *httptest.ResponseRecorder) {
+func (s *hscRpcSuite) newHttpContext(apikey string, body string) (echo.Context, *httptest.ResponseRecorder) {
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 	requestID, _ := uuid.GenerateUUID()
 	req = req.WithContext(context.WithValue(req.Context(), "request_id", requestID))
@@ -327,25 +327,13 @@ func (s *ethRpcSuite) newHttpContext(apikey string, body string) (echo.Context, 
 	return c, rec
 }
 
-func (s *ethRpcSuite) loadConfig() {
+func (s *hscRpcSuite) loadConfig() {
 	cfgToml := `
 listen = "127.0.0.1:1324"
 
 [upstream]
-#eth.http = "https://mainnet-rpc.wetez.io/eth/v1/a8403744cd53caeb36bc74b1978cfac2"
-eth.http = "https://rinkeby-light.eth.linkpool.io"
-#eth.ws = "wss://mainnet-rpc.wetez.io/ws/eth/v1/a8403744cd53caeb36bc74b1978cfac2"
-eth.ws = "wss://rinkeby-light.eth.linkpool.io/ws"
-
-arbitrum.http = "https://rinkeby.arbitrum.io/rpc"
-arbitrum.ws = "wss://rinkeby-light.eth.linkpool.io/ws"
-
-polygon.http = "https://rpc-mumbai.maticvigil.com"
-polygon.ws = ""
-
-solana.http = "https://api.testnet.solana.com"
-solana.ws = ""
-
+hsc.http = "https://http-mainnet.hoosmartchain.com"
+hsc.ws = "wss://ws-mainnet.hoosmartchain.com"
 
 [[redis]]
 database = 0
