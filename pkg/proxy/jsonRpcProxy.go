@@ -128,7 +128,14 @@ func (p *JsonRpcProxy) fromCache(req *request) ([]byte, error) {
 				JsonRpcVersion: singleReq.JsonRpcVersion,
 				Result:         res,
 			}
-			return json.Marshal(resp)
+			data, err := json.Marshal(resp)
+			if err != nil {
+				return nil, err
+			}
+
+			req.logger.Debug("got resp from cache", zap.ByteString("cached resp", data))
+
+			return data, nil
 		}
 	}
 
