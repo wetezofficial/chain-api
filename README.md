@@ -1,10 +1,15 @@
 Chain API
 ============================
 
-**READ starnet/starnet/README.md first**
+
+#### Requirements
+
+- Go >= 1.18
+- Redis >= 6.2.0
+- MySQL >= 5.7
 
 
-#### Build chain-api
+#### Build
 
 ```shell
 make build
