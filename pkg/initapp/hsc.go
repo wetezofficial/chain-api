@@ -58,6 +58,16 @@ func initHscHandler(app *app.App) error {
 		"net_listening",
 		"web3_clientVersion",
 		"web3_sha3",
+		// Trace
+		"trace_block",
+		"trace_call",
+		"trace_callMany",
+		"trace_filter",
+		"trace_get",
+		"trace_rawTransaction",
+		"trace_replayBlockTransactions",
+		"trace_replayTransaction",
+		"trace_transaction",
 	}
 
 	// WS 方式支持 filter 及 subscription
