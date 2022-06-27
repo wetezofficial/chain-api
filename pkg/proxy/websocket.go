@@ -16,12 +16,31 @@ import (
 )
 
 type Client struct {
-	conn *websocket.Conn
-	send chan<- RespData
+	conn   *websocket.Conn
+	send   chan<- RespData
+	closed bool
+	mutex  *sync.Mutex
 }
 
 func NewClient(conn *websocket.Conn, send chan<- RespData) *Client {
-	return &Client{conn: conn, send: send}
+	return &Client{conn: conn, send: send, mutex: new(sync.Mutex)}
+}
+
+func (c *Client) SetClosed() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.closed = true
+}
+
+func (c *Client) Send(data RespData) {
+	c.mutex.Lock()
+	if c.closed {
+		c.mutex.Unlock()
+		return
+	}
+	c.mutex.Unlock()
+
+	c.send <- data
 }
 
 type UpstreamWebSocket struct {
@@ -35,6 +54,7 @@ type UpstreamWebSocket struct {
 }
 
 func (u *UpstreamWebSocket) Close() error {
+	u.client.SetClosed()
 	return u.conn.Close()
 }
 
@@ -57,7 +77,7 @@ func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq
 		return err
 	}
 	if resp != nil {
-		u.client.send <- RespData{Data: resp}
+		u.client.Send(RespData{Data: resp})
 		return nil
 	}
 
@@ -91,7 +111,7 @@ func (u *UpstreamWebSocket) run() {
 		rawresp = bytes.TrimSpace(rawresp)
 		if rawresp[0] == '[' && rawresp[len(rawresp)-1] == ']' {
 			// batch call response
-			u.client.send <- RespData{Data: rawresp}
+			u.client.Send(RespData{Data: rawresp})
 			continue
 		}
 
@@ -104,7 +124,7 @@ func (u *UpstreamWebSocket) run() {
 		// 订阅的通知是没有 id 字段的
 		if upstreamResp.ID == 0 {
 			// 直接把内容写入到客户端
-			u.client.send <- RespData{Data: rawresp, Subscription: true}
+			u.client.Send(RespData{Data: rawresp, Subscription: true})
 			continue
 		}
 
@@ -125,6 +145,6 @@ func (u *UpstreamWebSocket) run() {
 			}
 		}
 
-		u.client.send <- RespData{Data: rawresp}
+		u.client.Send(RespData{Data: rawresp})
 	}
 }
