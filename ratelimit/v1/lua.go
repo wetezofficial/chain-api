@@ -3,8 +3,9 @@ package ratelimitv1
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v8"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 func RedisAllow(ctx context.Context, rdb redis.Scripter, chainID uint8, apiKey string, t time.Time, n int, revert bool) (int, error) {
@@ -50,7 +51,7 @@ if not sec_quota then
 end
 
 local current = redis.call("INCRBY", sec_rate_limit_key, n)
-if current == 1 then
+if tonumber(current) == tonumber(n) then
     redis.call("EXPIRE",sec_rate_limit_key,1)
 end
 
@@ -64,7 +65,7 @@ if not day_quota then
 end
 
 current = redis.call("INCRBY", day_rate_limit_key, n)
-if current == n then
+if tonumber(current) == tonumber(n) then
     redis.call("EXPIRE", day_rate_limit_key, 129600)
 end
 
