@@ -23,46 +23,46 @@ import (
 
 // JsonRpcHandler 可以处理所有使用 JsonRpc 方式通信的链，例如 ETH Polygon Arbitrum Solana
 type JsonRpcHandler struct {
-	chain                constant.Chain
-	httpSupportedMethods []string
-	wsSupportedMethods   []string
-	proxy                *proxy.JsonRpcProxy
-	rateLimiter          *ratelimitv1.RateLimiter
-	logger               *zap.Logger
-	isDev                bool
+	chain            constant.Chain
+	httpBlackMethods []string // 黑名单模式
+	wsBlackMethods   []string // 黑名单模式
+	proxy            *proxy.JsonRpcProxy
+	rateLimiter      *ratelimitv1.RateLimiter
+	logger           *zap.Logger
+	isDev            bool
 }
 
 func NewJsonRpcHandler(
 	chain constant.Chain,
-	httpSupportedMethods []string,
-	wsSupportedMethods []string,
+	httpBlackMethods []string,
+	wsBlackMethods []string,
 	proxy *proxy.JsonRpcProxy,
 	app *app.App,
 ) *JsonRpcHandler {
 	return &JsonRpcHandler{
-		chain:                chain,
-		httpSupportedMethods: httpSupportedMethods,
-		wsSupportedMethods:   wsSupportedMethods,
-		proxy:                proxy,
-		rateLimiter:          app.RateLimiter,
-		logger:               app.Logger,
-		isDev:                app.Config.Log.IsDevelopment,
+		chain:            chain,
+		httpBlackMethods: httpBlackMethods,
+		wsBlackMethods:   wsBlackMethods,
+		proxy:            proxy,
+		rateLimiter:      app.RateLimiter,
+		logger:           app.Logger,
+		isDev:            app.Config.Log.IsDevelopment,
 	}
 }
 
-func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcSingleRequest, supportedMethods []string) *jsonrpc.JsonRpcErr {
+func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcSingleRequest, blackMethods []string) *jsonrpc.JsonRpcErr {
 	if req.Method == "" {
 		return jsonrpc.ParseError
 	}
 
-	if !utils.In(req.Method, supportedMethods) {
+	if utils.In(req.Method, blackMethods) {
 		return jsonrpc.NewUnsupportedMethodError(req.ID)
 	}
 
 	return nil
 }
 
-func (h *JsonRpcHandler) bind(rawreq []byte, supportedMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
+func (h *JsonRpcHandler) bind(rawreq []byte, blackMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
 	req := jsonrpc.JsonRpcRequest{}
 	if err := json.Unmarshal(rawreq, &req); err != nil {
 		return nil, jsonrpc.ParseError
@@ -70,12 +70,12 @@ func (h *JsonRpcHandler) bind(rawreq []byte, supportedMethods []string) (*jsonrp
 
 	if req.IsBatchCall() {
 		for _, r := range req.GetBatchCall() {
-			if err := h.validateReq(&r, supportedMethods); err != nil {
+			if err := h.validateReq(&r, blackMethods); err != nil {
 				return nil, err
 			}
 		}
 	} else {
-		if err := h.validateReq(req.GetSingleCall(), supportedMethods); err != nil {
+		if err := h.validateReq(req.GetSingleCall(), blackMethods); err != nil {
 			return nil, err
 		}
 	}
@@ -123,7 +123,7 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 	}
 
 	logger.Debug("new request", zap.ByteString("rawreq", rawreq))
-	req, vErr := h.bind(rawreq, h.httpSupportedMethods)
+	req, vErr := h.bind(rawreq, h.httpBlackMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
 	}
@@ -214,7 +214,7 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 
 		logger.Debug("new request", zap.ByteString("rawreq", rawreq))
 
-		req, vErr := h.bind(rawreq, h.wsSupportedMethods)
+		req, vErr := h.bind(rawreq, h.wsBlackMethods)
 		if vErr != nil {
 			respJSON(logger, vErr)
 			continue

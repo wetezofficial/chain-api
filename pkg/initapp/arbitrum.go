@@ -15,52 +15,6 @@ import (
 
 func initArbitrumHandler(app *app.App) error {
 	chain := constant.ChainArbitrum
-	httpSupportedMethods := []string{
-		"eth_blockNumber",
-		"eth_getBlockByHash",
-		"eth_getBlockByNumber",
-		"eth_getTransactionByHash",
-		"eth_getTransactionCount",
-		"eth_getTransactionReceipt",
-		"eth_getBlockTransactionCountByHash",
-		"eth_getBlockTransactionCountByNumber",
-		"eth_getTransactionByBlockHashAndIndex",
-		"eth_getTransactionByBlockNumberAndIndex",
-		"eth_sendRawTransaction",
-		"eth_getBalance",
-		"eth_getCode",
-		"eth_getStorageAt",
-		"eth_accounts",
-		"eth_call",
-		"eth_getLogs",
-		"eth_gasPrice",
-		"eth_estimateGas",
-		"net_version",
-		"eth_chainId",
-		"web3_clientVersion",
-		"web3_sha3",
-		// Trace
-		"trace_block",
-		"trace_call",
-		"trace_callMany",
-		"trace_filter",
-		"trace_get",
-		"trace_rawTransaction",
-		"trace_replayBlockTransactions",
-		"trace_replayTransaction",
-		"trace_transaction",
-	}
-
-	wsSupportedMethods := append(httpSupportedMethods, []string{
-		"eth_getFilterChanges",
-		"eth_getFilterLogs",
-		"eth_newBlockFilter",
-		"eth_newFilter",
-		"eth_uninstallFilter",
-
-		"eth_subscribe",
-		"eth_unsubscribe",
-	}...)
 
 	cacheableMethods := []string{
 		"eth_blockNumber",
@@ -97,8 +51,8 @@ func initArbitrumHandler(app *app.App) error {
 
 	h := handler.NewJsonRpcHandler(
 		chain,
-		httpSupportedMethods,
-		wsSupportedMethods,
+		nil,
+		nil,
 		p,
 		app,
 	)
