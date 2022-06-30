@@ -36,7 +36,7 @@ local api_key     	= KEYS[1]
 
 local chain_id 		= ARGV[1]
 local day	   		= ARGV[2]
-local n	   		    = ARGV[3]
+local n	   		    = tonumber(ARGV[3])
 local revert	    = ARGV[4]
 
 local sec_quota_key = "q:s:" .. chain_id .. ":" .. api_key
@@ -46,12 +46,12 @@ local sec_rate_limit_key = "s:" .. chain_id .. ":" .. api_key
 local day_rate_limit_key = "d:" .. chain_id .. ":" .. api_key .. ":" .. day
 
 local sec_quota = tonumber(redis.call("GET", sec_quota_key))
-if not sec_quota then
+if sec_quota <= 0 then
   return -1
 end
 
-local current = redis.call("INCRBY", sec_rate_limit_key, n)
-if tonumber(current) == tonumber(n) then
+local current = tonumber(redis.call("INCRBY", sec_rate_limit_key, n))
+if current == n then
     redis.call("EXPIRE",sec_rate_limit_key,1)
 end
 
@@ -60,12 +60,12 @@ if current > sec_quota then
 end
 
 local day_quota = tonumber(redis.call("GET", day_quota_key))
-if not day_quota then
+if day_quota <= 0 then
   return -1
 end
 
-current = redis.call("INCRBY", day_rate_limit_key, n)
-if tonumber(current) == tonumber(n) then
+current = tonumber(redis.call("INCRBY", day_rate_limit_key, n))
+if current == n then
     redis.call("EXPIRE", day_rate_limit_key, 129600)
 end
 

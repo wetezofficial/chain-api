@@ -3,11 +3,13 @@ package ratelimitv1
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/go-redis/redis/v8"
 	"github.com/hashicorp/go-uuid"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"starnet/starnet/dao"
+	"sync"
 	"testing"
 	"time"
 )
@@ -203,5 +205,43 @@ func TestExceeded(t *testing.T) {
 		dayUsage, err := rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
 		assert.Nil(t, err)
 		assert.Equal(t, int64(n), dayUsage)
+	})
+
+	t.Run("test day usage ttl", func(t *testing.T) {
+		secQuota := 200
+		dayQuota := 500
+		apikey := genAndSetupApikey(secQuota, dayQuota)
+
+		res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+		assert.Nil(t, err)
+		assert.Equal(t, Allow, res)
+
+		wg := sync.WaitGroup{}
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			secUsageKey := fmt.Sprintf("s:%d:{%s}", chainID, apikey)
+			ttl, err := rdb.TTL(ctx, secUsageKey).Result()
+			assert.Nil(t, err, err)
+			assert.GreaterOrEqual(t, ttl, time.Duration(1))
+			assert.LessOrEqual(t, ttl, time.Second)
+
+			time.Sleep(time.Second)
+
+			_, err = rdb.Get(ctx, secUsageKey).Result()
+			assert.Equal(t, redis.Nil, err)
+		}()
+
+		go func() {
+			defer wg.Done()
+			dayUsageKey := fmt.Sprintf("d:%d:{%s}:%d", chainID, apikey, time.Now().Day())
+			ttl, err := rdb.TTL(ctx, dayUsageKey).Result()
+			assert.Nil(t, err, err)
+
+			// 天级使用的 ttl 应该在 24~36小时内
+			assert.Greater(t, ttl, time.Hour*24)
+			assert.LessOrEqual(t, ttl, time.Hour*36)
+		}()
+		wg.Wait()
 	})
 }
