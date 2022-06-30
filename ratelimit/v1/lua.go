@@ -46,7 +46,7 @@ local sec_rate_limit_key = "s:" .. chain_id .. ":" .. api_key
 local day_rate_limit_key = "d:" .. chain_id .. ":" .. api_key .. ":" .. day
 
 local sec_quota = tonumber(redis.call("GET", sec_quota_key))
-if sec_quota <= 0 then
+if not sec_quota then
   return -1
 end
 
@@ -60,7 +60,7 @@ if current > sec_quota then
 end
 
 local day_quota = tonumber(redis.call("GET", day_quota_key))
-if day_quota <= 0 then
+if not day_quota then
   return -1
 end
 

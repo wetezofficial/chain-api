@@ -244,4 +244,30 @@ func TestExceeded(t *testing.T) {
 		}()
 		wg.Wait()
 	})
+
+	t.Run("test key not exist", func(t *testing.T) {
+		apikey, err := uuid.GenerateUUID()
+		assert.Nil(t, err, err)
+
+		// 没有秒级和天级的配额
+		res, err := RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+		assert.Nil(t, err, err)
+		assert.Equal(t, NotExist, res)
+
+		// 手动仅设置秒级配额
+		secQuotaKey := fmt.Sprintf("q:s:%d:{%s}", chainID, apikey)
+		err = rdb.Set(ctx, secQuotaKey, 10, 0).Err()
+
+		res, err = RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+		assert.Nil(t, err, err)
+		assert.Equal(t, NotExist, res)
+
+		// 手动设置天级配额
+		dayQuotaKey := fmt.Sprintf("q:d:%d:{%s}", chainID, apikey)
+		err = rdb.Set(ctx, dayQuotaKey, 100, 0).Err()
+
+		res, err = RedisAllow(ctx, rdb, chainID, apikey, time.Now(), 1, true)
+		assert.Nil(t, err, err)
+		assert.Equal(t, Allow, res)
+	})
 }
