@@ -99,7 +99,7 @@ func (s *ethRpcSuite) TestBatchCall() {
 	}
 }
 
-func (s *ethRpcSuite) TestWhitelist() {
+func (s *ethRpcSuite) TestApiKeyWhitelist() {
 	chainID := 1
 	apikey := whitelistApikey
 
@@ -116,6 +116,27 @@ func (s *ethRpcSuite) TestWhitelist() {
 		usage, err := s.rateLimitDao.GetDayUsage(apikey, chainID, time.Now())
 		assert.Nil(s.T(), err, err)
 		assert.Equal(s.T(), int64(2), usage)
+	}
+}
+
+func (s *ethRpcSuite) TestHttpBlackMethodList() {
+	chainID := 1
+	apikey := s.genAndSetupApikey(10, 1000, chainID, time.Now())
+	c, rec := s.newHttpContext(apikey, `{"method":"eth_newFilter","params":[],"id":101,"jsonrpc":"2.0"}`)
+
+	if assert.NoError(s.T(), s.App.EthHttpHandler.Http(c)) {
+		assert.Equal(s.T(), http.StatusOK, rec.Code)
+
+		var resp jsonrpc.JsonRpcResponse
+		err := json.Unmarshal(rec.Body.Bytes(), &resp)
+		assert.Nil(s.T(), err)
+		assert.Nil(s.T(), resp.Result)
+
+		respErr := make(map[string]interface{})
+		err = json.Unmarshal(resp.Error, &respErr)
+		assert.Nil(s.T(), err)
+		assert.Equal(s.T(), float64(-32601), respErr["code"].(float64))
+		assert.Equal(s.T(), "Unsupported method", respErr["message"].(string))
 	}
 }
 
