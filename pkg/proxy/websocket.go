@@ -33,6 +33,12 @@ func (c *Client) SetClosed() {
 }
 
 func (c *Client) Send(data RespData) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.SetClosed()
+		}
+	}()
+
 	c.mutex.Lock()
 	if c.closed {
 		c.mutex.Unlock()
