@@ -16,6 +16,17 @@ import (
 func initArbitrumHandler(app *app.App) error {
 	chain := constant.ChainArbitrum
 
+	httpBlackMethods := []string{
+		"eth_getFilterChanges",
+		"eth_getFilterLogs",
+		"eth_newBlockFilter",
+		"eth_newFilter",
+		"eth_uninstallFilter",
+		"eth_subscribe",
+		"eth_unsubscribe",
+	}
+	var wsBlackMethods []string
+
 	cacheableMethods := []string{
 		"eth_blockNumber",
 		"eth_getBlockByHash",
@@ -51,8 +62,8 @@ func initArbitrumHandler(app *app.App) error {
 
 	h := handler.NewJsonRpcHandler(
 		chain,
-		nil,
-		nil,
+		httpBlackMethods,
+		wsBlackMethods,
 		p,
 		app,
 	)

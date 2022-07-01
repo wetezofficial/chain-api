@@ -16,8 +16,18 @@ import (
 func initPolygonHandler(app *app.App) error {
 	chain := constant.ChainPolygon
 
-	var httpBlockMethods []string
-	var wsBlockMethods []string
+	httpBlackMethods := []string{
+		"eth_getFilterChanges",
+		"eth_getFilterLogs",
+		"eth_newBlockFilter",
+		"eth_newFilter",
+		"eth_newPendingTransactionFilter",
+		"eth_uninstallFilter",
+		"eth_subscribe",
+		"eth_unsubscribe",
+	}
+
+	var wsBlackMethods []string
 
 	cacheableMethods := []string{
 		"eth_blockNumber",
@@ -67,8 +77,8 @@ func initPolygonHandler(app *app.App) error {
 
 	h := handler.NewJsonRpcHandler(
 		chain,
-		httpBlockMethods,
-		wsBlockMethods,
+		httpBlackMethods,
+		wsBlackMethods,
 		p,
 		app,
 	)

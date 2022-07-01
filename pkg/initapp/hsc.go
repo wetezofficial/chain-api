@@ -17,8 +17,17 @@ func initHscHandler(app *app.App) error {
 	chain := constant.ChainHSC
 	chainUpstreamCfg := app.Config.Upstream.Hsc
 
-	var httpBlockMethods []string
-	var wsBlockMethods []string
+	httpBlackMethods := []string{
+		"eth_newFilter",
+		"eth_newBlockFilter",
+		"eth_newPendingTransactionFilter",
+		"eth_uninstallFilter",
+		"eth_getFilterChanges",
+		"eth_getFilterLogs",
+		"eth_subscribe",
+		"eth_unsubscribe",
+	}
+	var wsBlackMethods []string
 
 	cacheableMethods := []string{
 		"eth_getBlockByHash",
@@ -58,8 +67,8 @@ func initHscHandler(app *app.App) error {
 
 	h := handler.NewJsonRpcHandler(
 		chain,
-		httpBlockMethods,
-		wsBlockMethods,
+		httpBlackMethods,
+		wsBlackMethods,
 		p,
 		app,
 	)
