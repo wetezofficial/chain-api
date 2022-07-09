@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  lua:
+    build: .
+    volumes:
+      - .:/code
+    working_dir: /code
+    command: "make coverage"
+  redis:
+    image: "redis:alpine"
