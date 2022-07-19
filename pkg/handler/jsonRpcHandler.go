@@ -8,17 +8,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/ioutil"
+	"strings"
+	"time"
+
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	"io/ioutil"
+
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/jsonrpc"
 	"starnet/chain-api/pkg/proxy"
 	"starnet/chain-api/pkg/utils"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	"starnet/starnet/constant"
-	"time"
 )
 
 // JsonRpcHandler 可以处理所有使用 JsonRpc 方式通信的链，例如 ETH Polygon Arbitrum Solana
@@ -83,6 +86,35 @@ func (h *JsonRpcHandler) bind(rawreq []byte, blackMethods []string) (*jsonrpc.Js
 	return &req, nil
 }
 
+func (h *JsonRpcHandler) pathBind(apiKey, requestURI string, blackMethods []string) (*jsonrpc.TenderMintRequest, *jsonrpc.JsonRpcErr) {
+	uriList := strings.Split(requestURI, "/")
+	pathAllStr := uriList[len(uriList)-1]
+	urlQueryList := strings.Split(pathAllStr, "?")
+	var pathStr string
+	var urlQueryStr string
+	if len(urlQueryList) > 0 {
+		pathStr = urlQueryList[0]
+		for _, v := range urlQueryList {
+			urlQueryStr += v
+		}
+	} else {
+		pathStr = pathAllStr
+	}
+
+	if pathStr == "/" || pathStr == apiKey {
+		return nil, jsonrpc.ParseError
+	}
+	isBlack := utils.In(pathStr, blackMethods)
+	if isBlack {
+		return nil, jsonrpc.NewUnsupportedMethodError(nil)
+	}
+
+	return &jsonrpc.TenderMintRequest{
+		Path:     pathStr,
+		URLQuery: "?" + urlQueryStr,
+	}, nil
+}
+
 func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiKey string, n int) *jsonrpc.JsonRpcErr {
 	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, n); err != nil {
 		if errors.Is(err, ratelimitv1.ExceededRateLimitError) {
@@ -135,6 +167,38 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 
 	ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*5)
 	resp, err := h.proxy.HttpProxy(ctx, logger, req)
+	if err != nil {
+		logger.Error("fail to proxy request", zap.Error(err))
+		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
+	}
+
+	logger.Debug("got response", zap.ByteString("resp", resp))
+
+	return c.JSONBlob(200, resp)
+}
+
+func (h *JsonRpcHandler) TendermintHttp(c echo.Context) error {
+	logger := h.newLogger(c)
+
+	apiKey, err := h.bindApiKey(c)
+	if err != nil {
+		return err
+	}
+
+	tenderMintRequest, vErr := h.pathBind(apiKey, c.Request().RequestURI, h.httpBlackMethods)
+	if vErr != nil {
+		return c.JSON(200, vErr)
+	}
+
+	if rlErr := h.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+		return c.JSON(200, rlErr)
+	}
+
+	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
+	defer cancelFunc()
+
+	resp, err := h.proxy.TendermintProxy(ctx, logger, *tenderMintRequest)
 	if err != nil {
 		logger.Error("fail to proxy request", zap.Error(err))
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))

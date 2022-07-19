@@ -1,11 +1,12 @@
 package app
 
 import (
+	"starnet/chain-api/config"
+	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	"starnet/chain-api/config"
-	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 )
 
 // App 所有的依赖信息都在这里
@@ -30,6 +31,10 @@ type App struct {
 
 	HscHttpHandler HttpHandler
 	HscWsHandler   WsHandler
+
+	CosmosHttpHandler  HttpHandler
+	EvmosHttpHandler   HttpHandler
+	GravityHttpHandler HttpHandler
 }
 
 func (a *App) Start() {

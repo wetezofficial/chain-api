@@ -2,9 +2,11 @@ package router
 
 import (
 	"context"
+
+	"starnet/chain-api/pkg/app"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"starnet/chain-api/pkg/app"
 )
 
 func NewRouter(app *app.App) *echo.Echo {
@@ -35,6 +37,10 @@ func NewRouter(app *app.App) *echo.Echo {
 
 	e.POST("/hsc/v1/:apiKey", app.HscHttpHandler.Http)
 	e.GET("/ws/hsc/v1/:apiKey", app.HscWsHandler.Ws)
+
+	e.GET("/cosmos/v1/:apiKey", app.CosmosHttpHandler.TendermintHttp)
+	e.GET("/evmos/v1/:apiKey", app.EvmosHttpHandler.TendermintHttp)
+	e.GET("/gravity/v1/:apiKey", app.GravityHttpHandler.TendermintHttp)
 
 	return e
 }

@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
+
 	starnetRedis "starnet/starnet/pkg/redis"
+
+	"github.com/spf13/viper"
 )
 
 type Config struct {
@@ -30,6 +32,18 @@ type Config struct {
 			Http string `mapstructure:"http"`
 			Ws   string `mapstructure:"ws"`
 		} `mapstructure:"hsc"`
+		Cosmos struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"cosmos"`
+		Evmos struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"evmos"`
+		Gravity struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"Gravity"`
 	} `mapstructure:"upstream"`
 
 	Log struct {

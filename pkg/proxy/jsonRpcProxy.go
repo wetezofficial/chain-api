@@ -12,21 +12,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-redis/redis/v8"
-	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 	"net/http"
-	"starnet/chain-api/pkg/app"
-	"starnet/chain-api/pkg/jsonrpc"
-	"starnet/chain-api/pkg/utils"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/jsonrpc"
+	"starnet/chain-api/pkg/utils"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 type UpstreamJsonRpcResponse struct {
-	ID uint64 `json:"id"`
+	ID int64 `json:"id"`
 	// JsonRpcVersion A String specifying the version of the JSON-RPC protocol. MUST be exactly "2.0".
 	JsonRpcVersion string          `json:"jsonrpc"`
 	Error          json.RawMessage `json:"error,omitempty"`
@@ -35,8 +37,8 @@ type UpstreamJsonRpcResponse struct {
 
 type request struct {
 	*jsonrpc.JsonRpcRequest
-	ID uint64 `json:"id"` // overwrite id while sending to upstream
-
+	*jsonrpc.TenderMintRequest
+	ID       int64 `json:"id"` // overwrite id while sending to upstream
 	cacheKey *string
 	cacheFn  func(request *request, result []byte) error
 	ctx      context.Context
@@ -62,7 +64,7 @@ type JsonRpcProxy struct {
 	rdb        redis.UniversalClient
 	httpClient *http.Client
 	cfg        *JsonRpcProxyConfig
-	requestID  uint64
+	requestID  int64
 }
 
 func NewJsonRpcProxy(app *app.App, cfg JsonRpcProxyConfig) *JsonRpcProxy {
@@ -78,7 +80,7 @@ func NewJsonRpcProxy(app *app.App, cfg JsonRpcProxyConfig) *JsonRpcProxy {
 func (p *JsonRpcProxy) fromRequest(rawreq *jsonrpc.JsonRpcRequest) (*request, error) {
 	req := request{
 		JsonRpcRequest: rawreq,
-		ID:             atomic.AddUint64(&p.requestID, 1),
+		ID:             atomic.AddInt64(&p.requestID, 1),
 	}
 	return &req, nil
 }
@@ -104,7 +106,7 @@ func (p *JsonRpcProxy) HttpProxy(ctx context.Context, logger *zap.Logger, rawreq
 	return p.HttpUpstream(req)
 }
 
-// fromCache 尝试从缓存中读取数据
+// fromCache get resp form cache
 func (p *JsonRpcProxy) fromCache(req *request) ([]byte, error) {
 	singleReq := req.GetSingleCall()
 
@@ -197,7 +199,7 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*Upstr
 		logger:   logger,
 		proxy:    p,
 		mutex:    new(sync.Mutex),
-		requests: make(map[uint64]*request),
+		requests: make(map[int64]*request),
 	}
 	go u.run()
 	return u, nil

@@ -2,8 +2,8 @@ package initapp
 
 import (
 	"fmt"
-	"go.uber.org/zap"
 	"log"
+
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
@@ -11,6 +11,8 @@ import (
 	"starnet/starnet/dao"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/pkg/redis"
+
+	"go.uber.org/zap"
 )
 
 func NewApp(configFile string) *app.App {
@@ -52,6 +54,9 @@ func NewApp(configFile string) *app.App {
 		initArbitrumHandler,
 		initSolanaHandler,
 		initHscHandler,
+		initCosmosHandler,
+		initEvmosHandler,
+		initGravityHandler,
 	}
 
 	for _, fn := range initFns {

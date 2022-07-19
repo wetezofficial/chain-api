@@ -8,11 +8,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
-	"starnet/chain-api/pkg/jsonrpc"
 	"sync"
 	"time"
+
+	"starnet/chain-api/pkg/jsonrpc"
+
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 type Client struct {
@@ -56,7 +58,7 @@ type UpstreamWebSocket struct {
 	logger *zap.Logger
 
 	mutex    *sync.Mutex
-	requests map[uint64]*request
+	requests map[int64]*request
 }
 
 func (u *UpstreamWebSocket) Close() error {
