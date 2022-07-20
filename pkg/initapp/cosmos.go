@@ -17,14 +17,23 @@ func initCosmosHandler(app *app.App) error {
 	httpBlackMethods := []string{}
 	var wsBlackMethods []string
 
-	// TODO:
 	cacheableMethods := []string{
 		"abci_info",
+		"abci_query",
 		"block",
 		"block_by_hash",
 		"block_results",
 		"block_search",
 		"blockchain",
+		"health",
+		"status",
+		"commit",
+		"validators",
+		"genesis",
+		"unconfirmed_txs",
+		"num_unconfirmed_txs",
+		"tx_search",
+		"tx",
 	}
 
 	cfg := proxy.JsonRpcProxyConfig{
