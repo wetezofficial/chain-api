@@ -32,9 +32,14 @@ type App struct {
 	HscHttpHandler HttpHandler
 	HscWsHandler   WsHandler
 
-	CosmosHttpHandler  HttpHandler
-	EvmosHttpHandler   HttpHandler
+	CosmosHttpHandler HttpHandler
+	CosmosWsHandler   WsHandler
+
+	EvmosHttpHandler HttpHandler
+	EvmosWsHandler   WsHandler
+
 	GravityHttpHandler HttpHandler
+	GravityWsHandler   WsHandler
 }
 
 func (a *App) Start() {

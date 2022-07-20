@@ -13,6 +13,15 @@ polygon.ws = ""
 solana.http = "https://api.testnet.solana.com"
 solana.ws = ""
 
+cosmos.http = "https://cosmos-test"
+cosmos.ws = ""
+
+evmos.http = "https://cosmos-test"
+evmos.ws = ""
+
+gravity.http = "https://cosmos-test"
+gravity.ws = ""
+
 [[redis]]
 database = 14
 username = ""

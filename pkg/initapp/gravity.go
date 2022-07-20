@@ -40,7 +40,7 @@ func initGravityHandler(app *app.App) error {
 	)
 
 	app.GravityHttpHandler = h
-	// app.GravityWsHandler = h
+	app.GravityWsHandler = h
 
 	return nil
 }

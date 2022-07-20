@@ -40,7 +40,7 @@ func initEvmosHandler(app *app.App) error {
 	)
 
 	app.EvmosHttpHandler = h
-	// app.EvmosWsHandler = h
+	app.EvmosWsHandler = h
 
 	return nil
 }

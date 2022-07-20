@@ -38,9 +38,17 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.POST("/hsc/v1/:apiKey", app.HscHttpHandler.Http)
 	e.GET("/ws/hsc/v1/:apiKey", app.HscWsHandler.Ws)
 
-	e.GET("/cosmos/v1/:apiKey", app.CosmosHttpHandler.TendermintHttp)
-	e.GET("/evmos/v1/:apiKey", app.EvmosHttpHandler.TendermintHttp)
-	e.GET("/gravity/v1/:apiKey", app.GravityHttpHandler.TendermintHttp)
+	e.POST("/cosmos/tendermint/v1/:apiKey", app.CosmosHttpHandler.Http)
+	e.GET("/cosmos/tendermint/v1/:apiKey", app.CosmosHttpHandler.TendermintHttp)
+	e.GET("/ws/cosmos/tendermint/v1/:apiKey", app.CosmosWsHandler.Ws)
+
+	e.POST("/evmos/tendermint/v1/:apiKey", app.EvmosHttpHandler.Http)
+	e.GET("/evmos/tendermint/v1/:apiKey", app.EvmosHttpHandler.TendermintHttp)
+	e.GET("/ws/evmos/tendermint/v1/:apiKey", app.EvmosWsHandler.Ws)
+
+	e.POST("/gravity/tendermint/v1/:apiKey", app.GravityHttpHandler.Http)
+	e.GET("/gravity/tendermint/v1/:apiKey", app.GravityHttpHandler.TendermintHttp)
+	e.GET("/ws/gravity/tendermint/v1/:apiKey", app.GravityWsHandler.Ws)
 
 	return e
 }

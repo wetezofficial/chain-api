@@ -18,7 +18,14 @@ func initCosmosHandler(app *app.App) error {
 	var wsBlackMethods []string
 
 	// TODO:
-	cacheableMethods := []string{}
+	cacheableMethods := []string{
+		"abci_info",
+		"block",
+		"block_by_hash",
+		"block_results",
+		"block_search",
+		"blockchain",
+	}
 
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     chainUpstreamCfg.Http,
@@ -40,7 +47,7 @@ func initCosmosHandler(app *app.App) error {
 	)
 
 	app.CosmosHttpHandler = h
-	// app.CosmosWsHandler = h
+	app.CosmosWsHandler = h
 
 	return nil
 }
