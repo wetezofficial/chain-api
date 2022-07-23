@@ -25,7 +25,6 @@ func initCosmosHandler(app *app.App) error {
 
 	cacheableMethods := []string{
 		"abci_info",
-		"abci_query",
 		"block",
 		"block_by_hash",
 		"block_results",
@@ -38,7 +37,6 @@ func initCosmosHandler(app *app.App) error {
 		"genesis",
 		"unconfirmed_txs",
 		"num_unconfirmed_txs",
-		"tx_search",
 		"tx",
 	}
 
