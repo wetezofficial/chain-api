@@ -13,14 +13,26 @@ polygon.ws = ""
 solana.http = "https://api.testnet.solana.com"
 solana.ws = ""
 
-cosmos.http = "https://cosmos-test"
+cosmos.http = "https://tendermint-test"
 cosmos.ws = ""
 
-evmos.http = "https://cosmos-test"
+evmos.http = "https://tendermint-test"
 evmos.ws = ""
 
-gravity.http = "https://cosmos-test"
+kava.http = "https://tendermint-test"
+kava.ws = ""
+
+juno.http = "https://tendermint-test"
+juno.ws = ""
+
+umee.http = "https://tendermint-test"
+umee.ws = ""
+
+gravity.http = "https://tendermint-test"
 gravity.ws = ""
+
+okc.http = "https://tendermint-test"
+okc.ws = ""
 
 [[redis]]
 database = 14
@@ -36,6 +48,6 @@ addr = "127.0.0.1:6379"
 
 [log]
 # debug, info, warn, error
-level           = "debug"
-is_dev             = true
-log_file        = "./starnet_chain_api.log"
+level = "debug"
+is_dev = true
+log_file = "./starnet_chain_api.log"

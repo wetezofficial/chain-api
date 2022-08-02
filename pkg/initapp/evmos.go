@@ -14,43 +14,21 @@ func initEvmosHandler(app *app.App) error {
 	chain := constant.ChainEvmos
 	chainUpstreamCfg := app.Config.Upstream.Evmos
 
-	httpBlackMethods := []string{}
-	var wsBlackMethods []string
-
-	cacheableMethods := []string{
-		"abci_info",
-		"abci_query",
-		"block",
-		"block_by_hash",
-		"block_results",
-		"block_search",
-		"blockchain",
-		"health",
-		"status",
-		"commit",
-		"validators",
-		"genesis",
-		"unconfirmed_txs",
-		"num_unconfirmed_txs",
-		"tx_search",
-		"tx",
-	}
-
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     chainUpstreamCfg.Http,
 		WsUpstream:       chainUpstreamCfg.Ws,
 		HttpClient:       http.DefaultClient,
 		CacheTime:        time.Second * 6, // block time 3s
 		ChainID:          chain.ChainID,
-		CacheableMethods: cacheableMethods,
+		CacheableMethods: tendermintCacheableMethods,
 	}
 
 	p := proxy.NewJsonRpcProxy(app, cfg)
 
 	h := handler.NewJsonRpcHandler(
 		chain,
-		httpBlackMethods,
-		wsBlackMethods,
+		tendermintHttpBlackMethods,
+		tendermintWsBlackMethods,
 		p,
 		app,
 	)

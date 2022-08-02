@@ -46,9 +46,25 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/evmos/tendermint/v1/:apiKey", app.EvmosHttpHandler.TendermintHttp)
 	e.GET("/ws/evmos/tendermint/v1/:apiKey", app.EvmosWsHandler.Ws)
 
+	e.POST("/kava/tendermint/v1/:apiKey", app.KavaHttpHandler.Http)
+	e.GET("/kava/tendermint/v1/:apiKey", app.KavaHttpHandler.TendermintHttp)
+	e.GET("/ws/kava/tendermint/v1/:apiKey", app.KavaWsHandler.Ws)
+
+	e.POST("/juno/tendermint/v1/:apiKey", app.JunoHttpHandler.Http)
+	e.GET("/juno/tendermint/v1/:apiKey", app.JunoHttpHandler.TendermintHttp)
+	e.GET("/ws/juno/tendermint/v1/:apiKey", app.JunoWsHandler.Ws)
+
+	e.POST("/umee/tendermint/v1/:apiKey", app.UmeeHttpHandler.Http)
+	e.GET("/umee/tendermint/v1/:apiKey", app.UmeeHttpHandler.TendermintHttp)
+	e.GET("/ws/umee/tendermint/v1/:apiKey", app.UmeeWsHandler.Ws)
+
 	e.POST("/gravity/tendermint/v1/:apiKey", app.GravityHttpHandler.Http)
 	e.GET("/gravity/tendermint/v1/:apiKey", app.GravityHttpHandler.TendermintHttp)
 	e.GET("/ws/gravity/tendermint/v1/:apiKey", app.GravityWsHandler.Ws)
+
+	e.POST("/okc/tendermint/v1/:apiKey", app.OKCHttpHandler.Http)
+	e.GET("/okc/tendermint/v1/:apiKey", app.OKCHttpHandler.TendermintHttp)
+	e.GET("/ws/okc/tendermint/v1/:apiKey", app.OKCWsHandler.Ws)
 
 	return e
 }

@@ -38,8 +38,23 @@ type App struct {
 	EvmosHttpHandler HttpHandler
 	EvmosWsHandler   WsHandler
 
+	KavaHttpHandler HttpHandler
+	KavaWsHandler   WsHandler
+
+	// 	juno
+	JunoHttpHandler HttpHandler
+	JunoWsHandler   WsHandler
+
+	// umee
+	UmeeHttpHandler HttpHandler
+	UmeeWsHandler   WsHandler
+
 	GravityHttpHandler HttpHandler
 	GravityWsHandler   WsHandler
+
+	// okc
+	OKCHttpHandler HttpHandler
+	OKCWsHandler   WsHandler
 }
 
 func (a *App) Start() {

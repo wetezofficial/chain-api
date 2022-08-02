@@ -10,9 +10,9 @@ import (
 	"starnet/starnet/constant"
 )
 
-func initGravityHandler(app *app.App) error {
-	chain := constant.ChainGravity
-	chainUpstreamCfg := app.Config.Upstream.Gravity
+func initOKCHandler(app *app.App) error {
+	chain := constant.ChainOKC
+	chainUpstreamCfg := app.Config.Upstream.OKC
 
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     chainUpstreamCfg.Http,
@@ -33,8 +33,8 @@ func initGravityHandler(app *app.App) error {
 		app,
 	)
 
-	app.GravityHttpHandler = h
-	app.GravityWsHandler = h
+	app.OKCHttpHandler = h
+	app.OKCWsHandler = h
 
 	return nil
 }

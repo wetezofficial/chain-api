@@ -10,9 +10,9 @@ import (
 	"starnet/starnet/constant"
 )
 
-func initGravityHandler(app *app.App) error {
-	chain := constant.ChainGravity
-	chainUpstreamCfg := app.Config.Upstream.Gravity
+func initJunoHandler(app *app.App) error {
+	chain := constant.ChainJuno
+	chainUpstreamCfg := app.Config.Upstream.Juno
 
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     chainUpstreamCfg.Http,
@@ -33,8 +33,8 @@ func initGravityHandler(app *app.App) error {
 		app,
 	)
 
-	app.GravityHttpHandler = h
-	app.GravityWsHandler = h
+	app.JunoHttpHandler = h
+	app.JunoWsHandler = h
 
 	return nil
 }

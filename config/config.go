@@ -40,10 +40,26 @@ type Config struct {
 			Http string `mapstructure:"http"`
 			Ws   string `mapstructure:"ws"`
 		} `mapstructure:"evmos"`
+		Kava struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"kava"`
+		Juno struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"juno"`
+		Umee struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"umee"`
 		Gravity struct {
 			Http string `mapstructure:"http"`
 			Ws   string `mapstructure:"ws"`
-		} `mapstructure:"Gravity"`
+		} `mapstructure:"gravity"`
+		OKC struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"okc"`
 	} `mapstructure:"upstream"`
 
 	Log struct {
@@ -66,7 +82,7 @@ func LoadConfig(configFile string) (*Config, error) {
 	cfg := &Config{}
 	err = viper.Unmarshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件: %w", err)
+		return nil, fmt.Errorf("读取配置文件：%w", err)
 	}
 
 	return cfg, nil
