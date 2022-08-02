@@ -10,7 +10,7 @@ import (
 	"starnet/chain-api/router"
 	"starnet/starnet/dao"
 	daoInterface "starnet/starnet/dao/interface"
-	"starnet/starnet/pkg/redis"
+	starnetRedis "starnet/starnet/pkg/redis"
 
 	"go.uber.org/zap"
 )
@@ -56,7 +56,11 @@ func NewApp(configFile string) *app.App {
 		initHscHandler,
 		initCosmosHandler,
 		initEvmosHandler,
+		initKavaHandler,
+		initJunoHandler,
+		initUmeeHandler,
 		initGravityHandler,
+		initOKCHandler,
 	}
 
 	for _, fn := range initFns {
