@@ -254,6 +254,11 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 					return
 				}
 
+				// FIXME:
+				if strings.Contains(string(resp.Data), "node_info") {
+					resp.RequestMethod = "status"
+				}
+
 				newData, err := h.clearInfo(resp.Data, resp.RequestMethod)
 				if err != nil {
 					logger.Error("fail to clear sensitive info", zap.Error(err))
@@ -336,7 +341,7 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 func (h *JsonRpcHandler) clearInfo(raw []byte, requestPath string) ([]byte, error) {
 	var result []byte
 	var err error
-	if strings.Contains(requestPath, "status") {
+	if strings.Contains(requestPath, "status") && strings.Contains(string(raw), "rpc_address") {
 		var rawMap map[string]interface{}
 		if err := json.Unmarshal(raw, &rawMap); err != nil {
 			return nil, nil

@@ -123,13 +123,14 @@ func (u *UpstreamWebSocket) run() {
 			continue
 		}
 
-		//req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
+		// req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
 		upstreamResp := UpstreamJsonRpcResponse{}
 		if err = json.Unmarshal(rawresp, &upstreamResp); err != nil {
 			return
 		}
 
 		// 订阅的通知是没有 id 字段的
+		// FIXME: if upstreamResp.ID == 0 && !strings.Contains(string(rawresp), "rpc_address") {
 		if upstreamResp.ID == 0 {
 			// 直接把内容写入到客户端
 			u.client.Send(RespData{Data: rawresp, Subscription: true})
@@ -137,6 +138,7 @@ func (u *UpstreamWebSocket) run() {
 		}
 
 		u.mutex.Lock()
+		// TODO: tendermint 和 evm 类网络的 Subscription 类型请求需要区分
 		req, ok := u.requests[upstreamResp.ID]
 		u.mutex.Unlock()
 		if ok {
@@ -153,6 +155,8 @@ func (u *UpstreamWebSocket) run() {
 			}
 		}
 
-		u.client.Send(RespData{Data: rawresp, RequestMethod: req.GetSingleCall().Method})
+		// FIXME:
+		// u.client.Send(RespData{Data: rawresp, RequestMethod: req.GetSingleCall().Method})
+		u.client.Send(RespData{Data: rawresp})
 	}
 }
