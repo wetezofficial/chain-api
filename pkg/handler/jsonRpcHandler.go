@@ -134,7 +134,14 @@ func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiK
 func (h *JsonRpcHandler) bindApiKey(c echo.Context) (string, error) {
 	var apiKey string
 	err := echo.PathParamsBinder(c).String("apiKey", &apiKey).BindError()
-	return apiKey, err
+	if err != nil {
+		return "", err
+	}
+	keyPathArray := strings.Split(apiKey, "/")
+	if len(keyPathArray) > 1 {
+		return keyPathArray[0], nil
+	}
+	return apiKey, nil
 }
 
 func (h *JsonRpcHandler) newLogger(c echo.Context) *zap.Logger {

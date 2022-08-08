@@ -76,6 +76,9 @@ func (p *JsonRpcProxy) DoTendermintUpstreamCall(req *jsonrpc.TenderMintRequest) 
 	if err != nil {
 		return nil, err
 	}
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf(res.Status)
+	}
 
 	buff := bytes.Buffer{}
 	_, err = buff.ReadFrom(res.Body)
