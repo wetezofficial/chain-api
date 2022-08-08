@@ -94,7 +94,10 @@ func (h *JsonRpcHandler) pathBind(apiKey, requestURI string, blackMethods []stri
 	var urlQueryStr string
 	if len(urlQueryList) > 0 {
 		pathStr = urlQueryList[0]
-		for _, v := range urlQueryList {
+		for k, v := range urlQueryList {
+			if k == 0 {
+				continue
+			}
 			urlQueryStr += v
 		}
 	} else {
