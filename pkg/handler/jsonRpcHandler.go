@@ -179,6 +179,12 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
+	resp, err = h.clearInfo(resp, req.GetSingleCall().Method)
+	if err != nil {
+		logger.Error("fail to clear sensitive info", zap.Error(err))
+		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
+	}
+
 	logger.Debug("got response", zap.ByteString("resp", resp))
 
 	return c.JSONBlob(200, resp)
@@ -211,6 +217,12 @@ func (h *JsonRpcHandler) TendermintHttp(c echo.Context) error {
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
+	resp, err = h.clearInfo(resp, c.Request().RequestURI)
+	if err != nil {
+		logger.Error("fail to clear sensitive info", zap.Error(err))
+		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
+	}
+
 	logger.Debug("got response", zap.ByteString("resp", resp))
 
 	return c.JSONBlob(200, resp)
@@ -235,13 +247,18 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 	sendCh := make(chan proxy.RespData)
 	defer close(sendCh)
 	go func() {
-		var err error
 		for {
 			select {
 			case resp := <-sendCh:
 				if resp.Data == nil {
 					return
 				}
+
+				newData, err := h.clearInfo(resp.Data, resp.RequestMethod)
+				if err != nil {
+					logger.Error("fail to clear sensitive info", zap.Error(err))
+				}
+				resp.Data = newData
 
 				if err = ws.WriteMessage(websocket.TextMessage, resp.Data); err != nil {
 					return
@@ -313,4 +330,36 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 		logger.Info("handle ws error", zap.Error(err))
 	}
 	return nil
+}
+
+// clearInfo .
+func (h *JsonRpcHandler) clearInfo(raw []byte, requestPath string) ([]byte, error) {
+	var result []byte
+	var err error
+	if strings.Contains(requestPath, "status") {
+		var rawMap map[string]interface{}
+		if err := json.Unmarshal(raw, &rawMap); err != nil {
+			return nil, nil
+		}
+		changeRPCAddress(rawMap)
+		result, err = json.Marshal(rawMap)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return raw, nil
+	}
+	return result, nil
+}
+
+func changeRPCAddress(rawMap map[string]interface{}) {
+	if result, ok := rawMap["result"].(map[string]interface{}); ok {
+		if nodeInfo, ok := result["node_info"].(map[string]interface{}); ok {
+			if other, ok := nodeInfo["other"].(map[string]interface{}); ok {
+				if _, ok := other["rpc_address"]; ok {
+					other["rpc_address"] = ""
+				}
+			}
+		}
+	}
 }

@@ -153,6 +153,6 @@ func (u *UpstreamWebSocket) run() {
 			}
 		}
 
-		u.client.Send(RespData{Data: rawresp})
+		u.client.Send(RespData{Data: rawresp, RequestMethod: req.GetSingleCall().Method})
 	}
 }

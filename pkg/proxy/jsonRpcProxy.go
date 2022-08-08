@@ -46,8 +46,9 @@ type request struct {
 }
 
 type RespData struct {
-	Data         []byte
-	Subscription bool
+	Data          []byte
+	RequestMethod string
+	Subscription  bool
 }
 
 type JsonRpcProxyConfig struct {
