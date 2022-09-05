@@ -36,27 +36,12 @@ if current == n then
 end
 
 -- day chain quota num key
-local day_chain_quota_key = "q:cd:" .. day .. ":" .. chain_id
+local day_chain_quota_key = "q:cd:" .. chain_id .. ":" .. day
 -- total chain quota num key ct-> chain-total
 local total_chain_quota_key = "q:ct:" .. chain_id
 
-local day_chain_quota = tonumber(redis.call("GET", day_chain_quota_key))
-if not day_chain_quota
-then
-    -- add new key to save today chain quota
-    redis.call("SET", day_chain_quota_key, n)
-else
-    redis.call("INCRBY", day_chain_quota_key, n)
-end
-
-local total_chain_quota = tonumber(redis.call("GET", total_chain_quota_key))
-if not total_chain_quota
-then
-    -- add new key to save total chain quota
-    redis.call("SET", total_chain_quota_key, n)
-else
-    redis.call("INCRBY", total_chain_quota_key, n)
-end
+redis.call("INCRBY", day_chain_quota_key, n)
+redis.call("INCRBY", total_chain_quota_key, n)
 
 if current > day_quota then
     if revert == "1" then
