@@ -22,10 +22,7 @@ func NewApp(configFile string) *app.App {
 		log.Fatalf("LoadConfig: %s \n", err.Error())
 	}
 
-	logger, err := config.NewLogger(cfg)
-	if err != nil {
-		log.Fatalf("NewLogger: %s \n", err.Error())
-	}
+	logger := config.NewLogger(cfg)
 
 	rdb := starnetRedis.New(cfg.Redis)
 
