@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"time"
 
@@ -10,10 +11,14 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var level zapcore.Level
+var (
+	level         zapcore.Level
+	isDevelopment bool
+)
 
 func NewLogger(c *Config) (logger *zap.Logger) {
 	lc := c.Log
+	isDevelopment = c.Log.IsDevelopment
 
 	switch lc.Level {
 	case "debug":
@@ -34,11 +39,12 @@ func NewLogger(c *Config) (logger *zap.Logger) {
 		level = zap.InfoLevel
 	}
 
-	if level == zap.DebugLevel || level == zap.ErrorLevel {
+	if level == zap.DebugLevel || level > zap.ErrorLevel {
 		logger = zap.New(getEncoderCore(), zap.AddStacktrace(level))
 	} else {
 		logger = zap.New(getEncoderCore())
 	}
+
 	logger = logger.WithOptions(zap.AddCaller())
 
 	return logger
@@ -73,7 +79,18 @@ func getEncoderCore() (core zapcore.Core) {
 		fmt.Printf("Get Write Syncer Failed err:%v \n", err.Error())
 		return
 	}
-	return zapcore.NewCore(getEncoder(), writer, level)
+
+	if isDevelopment {
+		return zapcore.NewCore(getEncoder(), writer, level)
+	}
+
+	return zapcore.NewTee(
+		zapcore.NewCore(getEncoder(), writer, zap.ErrorLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.DPanicLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.PanicLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.FatalLevel),
+		zapcore.NewCore(getEncoder(), writer, level),
+	)
 }
 
 // CustomTimeEncoder .
@@ -87,6 +104,8 @@ func getWriteSyncer() (zapcore.WriteSyncer, error) {
 		path.Join("log", "starnet_chain_api-%Y-%m-%d.log"),
 		zaprotatelogs.WithRotationTime(24*time.Hour),
 	)
-	// return zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(fileWriter)), err
+	if isDevelopment {
+		return zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(fileWriter)), err
+	}
 	return zapcore.NewMultiWriteSyncer(zapcore.AddSync(fileWriter)), err
 }
