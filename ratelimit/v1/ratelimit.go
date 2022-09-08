@@ -84,16 +84,16 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 	}
 
 	// add chain request count
-	if res == 1 {
-		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.DayChainQuotaKey, chainID, t.Day()), int64(n)).Err()
+	if res == 1 && n > 0 {
+		l.rdb.IncrBy(ctx, cachekey.GetChainDayKey(chainID, t), int64(n)).Err()
 		if err != nil {
 			logger.Error("failed to save chain day quota", zap.Error(err))
 		}
-		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.HourChainQuotaKey, chainID), int64(n)).Err()
+		l.rdb.IncrBy(ctx, cachekey.GetChainHourKey(chainID), int64(n)).Err()
 		if err != nil {
 			logger.Error("failed to save chain newest hour quota", zap.Error(err))
 		}
-		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.TotalChainQuotaKey, chainID), int64(n)).Err()
+		l.rdb.IncrBy(ctx, cachekey.GetChainTotalKey(chainID), int64(n)).Err()
 		if err != nil {
 			logger.Error("failed to save chain day quota", zap.Error(err))
 		}
