@@ -10,9 +10,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+var level zapcore.Level
+
 func NewLogger(c *Config) (logger *zap.Logger) {
 	lc := c.Log
-	var level zapcore.Level
 
 	switch lc.Level {
 	case "debug":
@@ -34,9 +35,9 @@ func NewLogger(c *Config) (logger *zap.Logger) {
 	}
 
 	if level == zap.DebugLevel || level == zap.ErrorLevel {
-		logger = zap.New(getEncoderCore(level), zap.AddStacktrace(level))
+		logger = zap.New(getEncoderCore(), zap.AddStacktrace(level))
 	} else {
-		logger = zap.New(getEncoderCore(level))
+		logger = zap.New(getEncoderCore())
 	}
 	logger = logger.WithOptions(zap.AddCaller())
 
@@ -65,25 +66,25 @@ func getEncoder() zapcore.Encoder {
 	return zapcore.NewConsoleEncoder(getEncoderConfig())
 }
 
-// getEncoderCore 获取Encoder的 zap core.Core
-func getEncoderCore(lvl zapcore.LevelEnabler) (core zapcore.Core) {
+// getEncoderCore 获取 Encoder 的 zapcore.Core
+func getEncoderCore() (core zapcore.Core) {
 	writer, err := getWriteSyncer()
 	if err != nil {
 		fmt.Printf("Get Write Syncer Failed err:%v \n", err.Error())
 		return
 	}
-	return zapcore.NewCore(getEncoder(), writer, lvl)
+	return zapcore.NewCore(getEncoder(), writer, level)
 }
 
 // CustomTimeEncoder .
 func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(t.Format("chain-api:" + "2006/01/02 - 15:04:05.000"))
+	enc.AppendString(t.Format("starnet_chain_api:" + "2006/01/02 - 15:04:05.000"))
 }
 
 func getWriteSyncer() (zapcore.WriteSyncer, error) {
-	// file-rotatelogs split log
+	// file rotate logs split log
 	fileWriter, err := zaprotatelogs.New(
-		path.Join("log", "%Y-%m-%d.log"),
+		path.Join("log", "starnet_chain_api-%Y-%m-%d.log"),
 		zaprotatelogs.WithRotationTime(24*time.Hour),
 	)
 	// return zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(fileWriter)), err

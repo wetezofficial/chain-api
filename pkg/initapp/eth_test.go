@@ -9,6 +9,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"starnet/chain-api/config"
+	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/initapp/chainlinktest"
+	"starnet/chain-api/pkg/jsonrpc"
+	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+	"starnet/chain-api/router"
+	"starnet/starnet/dao"
+	daoInterface "starnet/starnet/dao/interface"
+	starnetRedis "starnet/starnet/pkg/redis"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
@@ -17,21 +34,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"math/big"
-	"net/http"
-	"net/http/httptest"
-	"starnet/chain-api/config"
-	"starnet/chain-api/pkg/app"
-	"starnet/chain-api/pkg/initapp/chainlinktest"
-	"starnet/chain-api/pkg/jsonrpc"
-	"starnet/chain-api/ratelimit/v1"
-	"starnet/chain-api/router"
-	"starnet/starnet/dao"
-	"starnet/starnet/dao/interface"
-	"starnet/starnet/pkg/redis"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestEth(t *testing.T) {
@@ -266,8 +268,7 @@ const whitelistApikey = "xxx"
 func (s *ethRpcSuite) SetupSuite() {
 	s.loadConfig()
 
-	logger, err := config.NewLogger(s.cfg)
-	assert.Nil(s.T(), err)
+	logger := config.NewLogger(s.cfg)
 
 	rdb := starnetRedis.New(s.cfg.Redis)
 

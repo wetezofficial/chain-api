@@ -28,7 +28,8 @@ func RedisAllow(ctx context.Context, rdb redis.Scripter, chainID uint8, apiKey s
 }
 
 // rateLimitScript is a redis lua script for throttling
-//   day_rate_limit_key expire in 1.5 days
+//
+//	day_rate_limit_key expire in 1.5 days
 //
 // ATTENTION: tonumber(nil) is still (nil) not 0, @see http://lua-users.org/lists/lua-l/2009-04/msg00370.html
 //

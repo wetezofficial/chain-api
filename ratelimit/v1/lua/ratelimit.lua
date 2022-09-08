@@ -35,14 +35,6 @@ if current == n then
     redis.call("EXPIRE", day_rate_limit_key, 129600)
 end
 
--- day chain quota num key
-local day_chain_quota_key = "q:cd:" .. chain_id .. ":" .. day
--- total chain quota num key ct-> chain-total
-local total_chain_quota_key = "q:ct:" .. chain_id
-
-redis.call("INCRBY", day_chain_quota_key, n)
-redis.call("INCRBY", total_chain_quota_key, n)
-
 if current > day_quota then
     if revert == "1" then
         redis.call("DECRBY", day_rate_limit_key, current - day_quota)

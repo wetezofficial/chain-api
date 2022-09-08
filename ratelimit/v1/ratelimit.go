@@ -3,9 +3,13 @@ package ratelimitv1
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v8"
-	"go.uber.org/zap"
 	"time"
+
+	"starnet/starnet/cachekey"
+
+	"github.com/go-redis/redis/v8"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -29,8 +33,10 @@ func NewRateLimiter(rdb redis.UniversalClient, logger *zap.Logger, whitelist []s
 	}, nil
 }
 
-var ExceededRateLimitError = fmt.Errorf("exceeded rate limit")
-var ApiKeyNotExistError = fmt.Errorf("api key not exist")
+var (
+	ExceededRateLimitError = fmt.Errorf("exceeded rate limit")
+	ApiKeyNotExistError    = fmt.Errorf("api key not exist")
+)
 
 func (l *RateLimiter) allowWhitelist(ctx context.Context, chainID uint8, apiKey string, n int) (bool, error) {
 	inWhitelist := false
@@ -69,10 +75,28 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 		return nil
 	}
 
-	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, time.Now(), n, true)
+	t := time.Now()
+
+	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, t, n, true)
 	if err != nil {
 		logger.Error("failed to run rate limit script", zap.Error(err))
 		return err
+	}
+
+	// add chain request count
+	if res == 1 {
+		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.DayChainQuotaKey, chainID, t.Day()), int64(n)).Err()
+		if err != nil {
+			logger.Error("failed to save chain day quota", zap.Error(err))
+		}
+		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.HourChainQuotaKey, chainID), int64(n)).Err()
+		if err != nil {
+			logger.Error("failed to save chain newest hour quota", zap.Error(err))
+		}
+		l.rdb.IncrBy(ctx, fmt.Sprintf(cachekey.TotalChainQuotaKey, chainID), int64(n)).Err()
+		if err != nil {
+			logger.Error("failed to save chain day quota", zap.Error(err))
+		}
 	}
 
 	if res == NotExist {
