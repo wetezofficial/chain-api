@@ -58,7 +58,7 @@ type UpstreamWebSocket struct {
 	logger *zap.Logger
 
 	mutex    *sync.Mutex
-	requests map[int64]*request
+	requests map[interface{}]*request
 }
 
 func (u *UpstreamWebSocket) Close() error {

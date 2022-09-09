@@ -28,7 +28,7 @@ import (
 )
 
 type UpstreamJsonRpcResponse struct {
-	ID int64 `json:"id"`
+	ID interface{} `json:"id"`
 	// JsonRpcVersion A String specifying the version of the JSON-RPC protocol. MUST be exactly "2.0".
 	JsonRpcVersion string          `json:"jsonrpc"`
 	Error          json.RawMessage `json:"error,omitempty"`
@@ -38,7 +38,7 @@ type UpstreamJsonRpcResponse struct {
 type request struct {
 	*jsonrpc.JsonRpcRequest
 	*jsonrpc.TenderMintRequest
-	ID       int64 `json:"id"` // overwrite id while sending to upstream
+	ID       interface{} `json:"id"` // overwrite id while sending to upstream
 	cacheKey *string
 	cacheFn  func(request *request, result []byte) error
 	ctx      context.Context
@@ -200,7 +200,7 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*Upstr
 		logger:   logger,
 		proxy:    p,
 		mutex:    new(sync.Mutex),
-		requests: make(map[int64]*request),
+		requests: make(map[interface{}]*request),
 	}
 	go u.run()
 	return u, nil
