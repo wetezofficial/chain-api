@@ -257,7 +257,7 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 					return
 				}
 
-				// FIXME:
+				// cosmos rpc hide the node ip
 				if strings.Contains(string(resp.Data), "node_info") {
 					resp.RequestMethod = "status"
 				}
@@ -340,7 +340,7 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 	return nil
 }
 
-// clearInfo .
+// clearInfo cosmos status api hide the rpc ip address
 func (h *JsonRpcHandler) clearInfo(raw []byte, requestPath string) ([]byte, error) {
 	var result []byte
 	var err error
