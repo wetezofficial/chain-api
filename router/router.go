@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-
 	"starnet/chain-api/pkg/app"
 
 	"github.com/labstack/echo/v4"
@@ -65,6 +64,10 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.POST("/okc/tendermint/v1/:apiKey", app.OKCHttpHandler.Http)
 	e.GET("/okc/tendermint/v1/:apiKey", app.OKCHttpHandler.TendermintHttp)
 	e.GET("/ws/okc/tendermint/v1/:apiKey", app.OKCWsHandler.Ws)
+
+	e.POST("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.Http)
+	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
+	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
 	return e
 }

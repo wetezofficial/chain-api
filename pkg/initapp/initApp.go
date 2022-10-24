@@ -61,6 +61,7 @@ func NewApp(configFile string) *app.App {
 		initUmeeHandler,
 		initGravityHandler,
 		initOKCHandler,
+		initIRISnetHandler,
 	}
 
 	for _, fn := range initFns {

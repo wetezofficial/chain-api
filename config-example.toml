@@ -34,6 +34,9 @@ gravity.ws = ""
 okc.http = "https://tendermint-test"
 okc.ws = ""
 
+irisnet.http = "https://tendermint-test"
+irisnet.ws = ""
+
 [[redis]]
 database = 14
 username = ""
