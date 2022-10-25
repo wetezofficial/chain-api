@@ -16,8 +16,8 @@ func NewLogger(c *Config, opts ...zap.Option) (*zap.Logger, error) {
 		zapCfg.Level = zap.NewAtomicLevelAt(zap.ErrorLevel)
 	}
 	zapCfg.Development = lc.IsDevelopment
-	zapCfg.OutputPaths = []string{lc.LogFile}
-	zapCfg.ErrorOutputPaths = []string{lc.LogFile}
+	zapCfg.OutputPaths = []string{lc.LogFile, "stdout"}
+	zapCfg.ErrorOutputPaths = []string{lc.LogFile, "stdout"}
 
 	return zapCfg.Build(opts...)
 }
