@@ -119,7 +119,6 @@ func (h *JsonRpcHandler) pathBind(apiKey, requestURI string, blackMethods []stri
 }
 
 func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiKey string, n int) *jsonrpc.JsonRpcErr {
-	return nil
 	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, n); err != nil {
 		if errors.Is(err, ratelimitv1.ExceededRateLimitError) {
 			return jsonrpc.TooManyRequestErr
