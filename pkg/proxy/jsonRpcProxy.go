@@ -154,10 +154,10 @@ func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest, logger *z
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to marshal request")
 	}
-	logger.Error("The rawreq is", zap.ByteString("rawreq", rawreq))
 
 	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
+		logger.Error("The rawreq is", zap.ByteString("rawreq", rawreq))
 		return nil, errors.Wrap(err, "fail to post request")
 	}
 
