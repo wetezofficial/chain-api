@@ -10,7 +10,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -152,18 +152,18 @@ func (p *JsonRpcProxy) CacheFn(req *request, result []byte) error {
 func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, error) {
 	rawreq, err := json.Marshal(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to marshal request")
 	}
 
 	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to post request")
 	}
 
 	buff := bytes.Buffer{}
 	_, err = buff.ReadFrom(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to read response body")
 	}
 
 	return buff.Bytes(), nil
@@ -171,11 +171,14 @@ func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, 
 
 func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest)
+	if err != nil {
+		return nil, err
+	}
 	req.logger.Debug("new upstream response", zap.ByteString("resp", resp))
 
 	upstreamResp := UpstreamJsonRpcResponse{}
 	if err = json.Unmarshal(resp, &upstreamResp); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to unmarshal upstream response")
 	}
 
 	// step3. Cache if it is a valid result and cacheable
