@@ -178,7 +178,8 @@ func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 
 	upstreamResp := UpstreamJsonRpcResponse{}
 	if err = json.Unmarshal(resp, &upstreamResp); err != nil {
-		return nil, errors.Wrap(err, "fail to unmarshal upstream response")
+		req.logger.Error("fail to unmarshal upstream response", zap.Any("resp", resp))
+		return nil, err
 	}
 
 	// step3. Cache if it is a valid result and cacheable
