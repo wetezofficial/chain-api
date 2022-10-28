@@ -154,13 +154,12 @@ func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest, logger *z
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to marshal request")
 	}
-	logger.Error("The rawreq is ", zap.ByteString("rawreq", rawreq))
+	logger.Error("The rawreq is", zap.ByteString("rawreq", rawreq))
 
 	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to post request")
 	}
-	logger.Error("The res is ", zap.Any("res", res))
 
 	buff := bytes.Buffer{}
 	_, err = buff.ReadFrom(res.Body)
@@ -180,7 +179,7 @@ func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
 
 	upstreamResp := UpstreamJsonRpcResponse{}
 	if err = json.Unmarshal(resp, &upstreamResp); err != nil {
-		req.logger.Error("fail to unmarshal upstream response", zap.Any("resp", resp))
+		req.logger.Error("fail to unmarshal upstream response", zap.ByteString("resp", resp))
 		return nil, err
 	}
 
