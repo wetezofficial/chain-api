@@ -88,7 +88,7 @@ func (p *JsonRpcProxy) fromRequest(rawreq *jsonrpc.JsonRpcRequest) (*request, er
 
 func (p *JsonRpcProxy) HttpProxy(ctx context.Context, logger *zap.Logger, rawreq *jsonrpc.JsonRpcRequest) ([]byte, error) {
 	if rawreq.IsBatchCall() {
-		return p.DoHttpUpstreamCall(rawreq)
+		return p.DoHttpUpstreamCall(rawreq, logger)
 	}
 
 	req, err := p.fromRequest(rawreq)
@@ -149,16 +149,18 @@ func (p *JsonRpcProxy) CacheFn(req *request, result []byte) error {
 	return p.rdb.Set(context.TODO(), *req.cacheKey, result, p.cfg.CacheTime).Err()
 }
 
-func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, error) {
+func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest, logger *zap.Logger) ([]byte, error) {
 	rawreq, err := json.Marshal(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to marshal request")
 	}
+	logger.Error("The rawreq is ", zap.ByteString("rawreq", rawreq))
 
 	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
 		return nil, errors.Wrap(err, "fail to post request")
 	}
+	logger.Error("The res is ", zap.Any("res", res))
 
 	buff := bytes.Buffer{}
 	_, err = buff.ReadFrom(res.Body)
@@ -170,7 +172,7 @@ func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, 
 }
 
 func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
-	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest)
+	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest, req.logger)
 	if err != nil {
 		return nil, err
 	}
