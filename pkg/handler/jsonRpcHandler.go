@@ -151,11 +151,10 @@ func (h *JsonRpcHandler) newLogger(c echo.Context) *zap.Logger {
 	// add chain name
 	requestURIList := strings.Split(c.Request().RequestURI, "/")
 	if requestURIList[1] == "ws" {
-		h.logger.With(zap.String("chain", requestURIList[2]))
+		return h.logger.With(zap.String("chain", requestURIList[2]), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 	} else {
-		h.logger.With(zap.String("chain", requestURIList[1]))
+		return h.logger.With(zap.String("chain", requestURIList[1]), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 	}
-	return h.logger.With(zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 }
 
 func (h *JsonRpcHandler) Http(c echo.Context) error {
