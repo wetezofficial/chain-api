@@ -27,6 +27,22 @@ func initArbitrumHandler(app *app.App) error {
 	}
 	var wsBlackMethods []string
 
+	justWhiteMethods:=[]string{
+		"trace_call",
+		"trace_block",
+		"trace_get",
+		"trace_filter",
+		"trace_transaction",
+		"trace_rawTransaction",
+		"trace_replayBlockTransactions",
+		"trace_replayTransaction",
+
+		"debug_traceCall",
+		"debug_traceTransaction",
+		"debug_traceBlockByNumber",
+		"debug_traceBlockByHash",
+	}
+
 	cacheableMethods := []string{
 		"eth_blockNumber",
 		"eth_getBlockByHash",
@@ -64,6 +80,7 @@ func initArbitrumHandler(app *app.App) error {
 		chain,
 		httpBlackMethods,
 		wsBlackMethods,
+		justWhiteMethods,
 		p,
 		app,
 	)

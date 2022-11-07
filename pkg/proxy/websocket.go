@@ -137,7 +137,6 @@ func (u *UpstreamWebSocket) run() {
 		}
 
 		u.mutex.Lock()
-		// TODO: tendermint 和 evm 类网络的 Subscription 类型请求需要区分？
 		req, ok := u.requests[upstreamResp.ID]
 		u.mutex.Unlock()
 		if ok {

@@ -54,6 +54,22 @@ func initEthHandler(app *app.App) error {
 		"web3_clientVersion",
 	}
 
+	justWhiteMethods:=[]string{
+		"trace_call",
+		"trace_block",
+		"trace_get",
+		"trace_filter",
+		"trace_transaction",
+		"trace_rawTransaction",
+		"trace_replayBlockTransactions",
+		"trace_replayTransaction",
+
+		"debug_traceCall",
+		"debug_traceTransaction",
+		"debug_traceBlockByNumber",
+		"debug_traceBlockByHash",
+	}
+
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     app.Config.Upstream.Eth.Http,
 		WsUpstream:       app.Config.Upstream.Eth.Ws,
@@ -69,6 +85,7 @@ func initEthHandler(app *app.App) error {
 		chain,
 		httpBlackMethods,
 		wsBlackMethods,
+		justWhiteMethods,
 		p,
 		app,
 	)

@@ -3,9 +3,10 @@ package ratelimitv1
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
-	"time"
 )
 
 const (
@@ -29,8 +30,10 @@ func NewRateLimiter(rdb redis.UniversalClient, logger *zap.Logger, whitelist []s
 	}, nil
 }
 
-var ExceededRateLimitError = fmt.Errorf("exceeded rate limit")
-var ApiKeyNotExistError = fmt.Errorf("api key not exist")
+var (
+	ExceededRateLimitError = fmt.Errorf("exceeded rate limit")
+	ApiKeyNotExistError    = fmt.Errorf("api key not exist")
+)
 
 func (l *RateLimiter) allowWhitelist(ctx context.Context, chainID uint8, apiKey string, n int) (bool, error) {
 	inWhitelist := false
@@ -56,6 +59,17 @@ func (l *RateLimiter) allowWhitelist(ctx context.Context, chainID uint8, apiKey 
 	}
 
 	return inWhitelist, nil
+}
+
+func (l *RateLimiter) CheckInWhiteList(apiKey string) bool {
+	inWhitelist := false
+	for _, _apiKey := range l.whitelist {
+		if _apiKey == apiKey {
+			inWhitelist = true
+			break
+		}
+	}
+	return inWhitelist
 }
 
 func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n int) error {
