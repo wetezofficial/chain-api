@@ -18,6 +18,7 @@ func initSolanaHandler(app *app.App) error {
 
 	var httpBlackMethods []string
 	var wsBlackMethods []string
+	var justWhiteMethods []string
 
 	cacheableMethods := []string{
 		"getAccountInfo",
@@ -97,6 +98,7 @@ func initSolanaHandler(app *app.App) error {
 		chain,
 		httpBlackMethods,
 		wsBlackMethods,
+		justWhiteMethods,
 		p,
 		app,
 	)

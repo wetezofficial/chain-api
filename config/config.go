@@ -60,6 +60,10 @@ type Config struct {
 			Http string `mapstructure:"http"`
 			Ws   string `mapstructure:"ws"`
 		} `mapstructure:"okc"`
+		IRISnet struct {
+			Http string `mapstructure:"http"`
+			Ws   string `mapstructure:"ws"`
+		} `mapstructure:"irisnet"`
 	} `mapstructure:"upstream"`
 
 	Log struct {

@@ -27,8 +27,9 @@ import (
 // JsonRpcHandler 可以处理所有使用 JsonRpc 方式通信的链，例如 ETH Polygon Arbitrum Solana
 type JsonRpcHandler struct {
 	chain            constant.Chain
-	httpBlackMethods []string // 黑名单模式
-	wsBlackMethods   []string // 黑名单模式
+	httpBlackMethods []string // black list mode
+	wsBlackMethods   []string // black list mode
+	justWhiteMethods []string // only apiKey in white list can request
 	proxy            *proxy.JsonRpcProxy
 	rateLimiter      *ratelimitv1.RateLimiter
 	logger           *zap.Logger
@@ -39,6 +40,7 @@ func NewJsonRpcHandler(
 	chain constant.Chain,
 	httpBlackMethods []string,
 	wsBlackMethods []string,
+	justWhiteMethods []string,
 	proxy *proxy.JsonRpcProxy,
 	app *app.App,
 ) *JsonRpcHandler {
@@ -46,6 +48,7 @@ func NewJsonRpcHandler(
 		chain:            chain,
 		httpBlackMethods: httpBlackMethods,
 		wsBlackMethods:   wsBlackMethods,
+		justWhiteMethods: justWhiteMethods,
 		proxy:            proxy,
 		rateLimiter:      app.RateLimiter,
 		logger:           app.Logger,
@@ -65,10 +68,14 @@ func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcSingleRequest, blackMet
 	return nil
 }
 
-func (h *JsonRpcHandler) bind(rawreq []byte, blackMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
+func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
 	req := jsonrpc.JsonRpcRequest{}
 	if err := json.Unmarshal(rawreq, &req); err != nil {
 		return nil, jsonrpc.ParseError
+	}
+
+	if !h.rateLimiter.CheckInWhiteList(apiKey) {
+		blackMethods = append(blackMethods, h.justWhiteMethods...)
 	}
 
 	if req.IsBatchCall() {
@@ -151,11 +158,10 @@ func (h *JsonRpcHandler) newLogger(c echo.Context) *zap.Logger {
 	// add chain name
 	requestURIList := strings.Split(c.Request().RequestURI, "/")
 	if requestURIList[1] == "ws" {
-		h.logger.With(zap.String("chain", requestURIList[2]))
+		return h.logger.With(zap.String("chain", h.chain.Name), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 	} else {
-		h.logger.With(zap.String("chain", requestURIList[1]))
+		return h.logger.With(zap.String("chain", h.chain.Name), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 	}
-	return h.logger.With(zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 }
 
 func (h *JsonRpcHandler) Http(c echo.Context) error {
@@ -171,7 +177,6 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return err
 	}
 	logger.Debug("new request", zap.ByteString("rawreq", rawreq))
-
 	req, vErr := h.bind(rawreq, h.httpBlackMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
@@ -189,7 +194,7 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
-	resp, err = h.clearInfo(resp, req.GetSingleCall().Method)
+	resp, err = h.clearInfo(c, resp, req.GetSingleCall().Method)
 	if err != nil {
 		logger.Error("fail to clear sensitive info", zap.Error(err))
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
@@ -227,7 +232,7 @@ func (h *JsonRpcHandler) TendermintHttp(c echo.Context) error {
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
-	resp, err = h.clearInfo(resp, c.Request().RequestURI)
+	resp, err = h.clearInfo(c, resp, c.Request().RequestURI)
 	if err != nil {
 		logger.Error("fail to clear sensitive info", zap.Error(err))
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
@@ -264,12 +269,12 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 					return
 				}
 
-				// FIXME:
+				// cosmos rpc hide the node ip
 				if strings.Contains(string(resp.Data), "node_info") {
 					resp.RequestMethod = "status"
 				}
 
-				newData, err := h.clearInfo(resp.Data, resp.RequestMethod)
+				newData, err := h.clearInfo(c, resp.Data, resp.RequestMethod)
 				if err != nil {
 					logger.Error("fail to clear sensitive info", zap.Error(err))
 				}
@@ -317,7 +322,7 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 
 		logger.Debug("new request", zap.ByteString("rawreq", rawreq))
 
-		req, vErr := h.bind(rawreq, h.wsBlackMethods)
+		req, vErr := h.bind(apiKey, rawreq, h.wsBlackMethods)
 		if vErr != nil {
 			respJSON(logger, vErr)
 			continue
@@ -347,8 +352,11 @@ func (h *JsonRpcHandler) Ws(c echo.Context) error {
 	return nil
 }
 
-// clearInfo .
-func (h *JsonRpcHandler) clearInfo(raw []byte, requestPath string) ([]byte, error) {
+// clearInfo cosmos status api hide the rpc ip address
+func (h *JsonRpcHandler) clearInfo(c echo.Context, raw []byte, requestPath string) ([]byte, error) {
+	if !strings.Contains(c.Request().RequestURI, "tendermint") {
+		return raw, nil
+	}
 	var result []byte
 	var err error
 	if strings.Contains(requestPath, "status") && strings.Contains(string(raw), "rpc_address") {
