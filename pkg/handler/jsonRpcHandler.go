@@ -177,7 +177,7 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return err
 	}
 	logger.Debug("new request", zap.ByteString("rawreq", rawreq))
-	req, vErr := h.bind(rawreq, h.httpBlackMethods)
+	req, vErr := h.bind(apiKey, rawreq, h.httpBlackMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
 	}

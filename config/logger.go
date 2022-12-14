@@ -88,15 +88,15 @@ func getEncoderCore() (core zapcore.Core) {
 		zapcore.NewCore(getEncoder(), writer, zap.ErrorLevel),
 		zapcore.NewCore(getEncoder(), writer, zap.DPanicLevel),
 		zapcore.NewCore(getEncoder(), writer, zap.PanicLevel),
-		zapcore.NewCore(getEncoder(), writer, zap.FatalLe, "stdout"vel),
+		zapcore.NewCore(getEncoder(), writer, zap.FatalLevel),
 		zapcore.NewCore(getEncoder(), writer, level),
 	)
 }
 
 // CustomTimeEncoder .
 func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(t.Format("starnet_chain_api:" + "2006/01/02 - 15:04:05.000"))
-, "stdout"}
+	enc.AppendString(t.Format("starnet_portal_api:" + "2006/01/02 - 15:04:05.000"))
+}
 
 func getWriteSyncer() (zapcore.WriteSyncer, error) {
 	// file rotate logs split log
