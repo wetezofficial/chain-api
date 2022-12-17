@@ -10,15 +10,18 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/go-uuid v1.0.1
+	github.com/ipfs-cluster/ipfs-cluster v1.0.4
+	github.com/ipfs/go-ipfs-api v0.3.0
 	github.com/jonboulle/clockwork v0.3.0 // indirect
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/lestrrat-go/strftime v1.0.6 // indirect
+	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/pkg/errors v0.9.1
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/spf13/viper v1.12.0
-	github.com/stretchr/testify v1.7.2
-	github.com/urfave/cli/v2 v2.3.0
-	go.uber.org/zap v1.21.0
+	github.com/stretchr/testify v1.8.0
+	github.com/urfave/cli/v2 v2.14.1
+	go.uber.org/zap v1.22.0
 	starnet/starnet v0.0.0-00010101000000-000000000000
 )
