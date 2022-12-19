@@ -3,6 +3,9 @@ package initapp
 import (
 	"fmt"
 	"log"
+	"starnet/chain-api/pkg/db"
+	"starnet/chain-api/service"
+	"starnet/portal-api/pkg/cache"
 
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
@@ -25,7 +28,6 @@ func NewApp(configFile string) *app.App {
 	logger := config.NewLogger(cfg)
 
 	rdb := starnetRedis.New(cfg.Redis)
-
 	var rateLimitDao daoInterface.RateLimitDao = dao.NewRateLimitDao(rdb)
 	apiKeysWhitelist, err := rateLimitDao.GetApiKeysWhitelist()
 	if err != nil {
@@ -38,11 +40,23 @@ func NewApp(configFile string) *app.App {
 		logger.Fatal("fail to get rate limiter", zap.Error(err))
 	}
 
+	_db, err := db.NewDB(cfg, logger)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	ipfsDao := dao.NewIPFSDao(_db)
+
+	rdbCache := cache.NewRedisCache(rdb, "chain:")
+	ipfsSrv := service.NewIpfsService(ipfsDao, rdbCache)
+
 	_app := app.App{
 		Config:      cfg,
 		Logger:      logger,
 		Rdb:         rdb,
+		DB:          _db,
 		RateLimiter: rateLimiter,
+		IPFSDao:     ipfsDao,
+		IPFSSrv:     ipfsSrv,
 	}
 
 	initFns := []func(app *app.App) error{
@@ -59,6 +73,7 @@ func NewApp(configFile string) *app.App {
 		initGravityHandler,
 		initOKCHandler,
 		initIRISnetHandler,
+		initIPFSClient,
 	}
 
 	for _, fn := range initFns {

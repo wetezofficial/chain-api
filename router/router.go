@@ -69,5 +69,13 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
+	ipfsRouter := e.Group("/ipfs")
+	{
+		ipfsRouter.POST("/ipfs/upload", app.IPFSHandler.Upload)
+		ipfsRouter.POST("/ipfs/pin", app.IPFSHandler.Pin)
+		ipfsRouter.POST("/ipfs/get", app.IPFSHandler.Get)
+		ipfsRouter.POST("/ipfs/list", app.IPFSHandler.List)
+	}
+
 	return e
 }

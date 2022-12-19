@@ -1,6 +1,8 @@
 package app
 
-import "github.com/labstack/echo/v4"
+import (
+	"github.com/labstack/echo/v4"
+)
 
 type HttpHandler interface {
 	Http(ctx echo.Context) error
@@ -9,4 +11,11 @@ type HttpHandler interface {
 
 type WsHandler interface {
 	Ws(ctx echo.Context) error
+}
+
+type IPFSHandler interface {
+	Upload(ctx echo.Context) error
+	List(ctx echo.Context) error
+	Get(ctx echo.Context) error
+	Pin(ctx echo.Context) error
 }

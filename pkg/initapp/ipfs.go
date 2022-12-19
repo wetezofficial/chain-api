@@ -1,19 +1,39 @@
-package app
+package initapp
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
+	"starnet/chain-api/pkg/handler"
+	"starnet/starnet/constant"
 	"strings"
 
 	"github.com/ipfs-cluster/ipfs-cluster/api"
 	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
 	shell "github.com/ipfs/go-ipfs-api"
 	ma "github.com/multiformats/go-multiaddr"
+	"starnet/chain-api/pkg/app"
 )
 
-var filePath = ""
+func initIPFSClient(app *app.App) error {
+	chain := constant.ChainIPFS
+
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 9094))
+	if err != nil {
+		return err
+	}
+
+	cfg := &client.Config{
+		APIAddr:           addr,
+		DisableKeepAlives: true,
+	}
+	c, err := client.NewDefaultClient(cfg)
+	if err != nil {
+		return err
+	}
+	app.IPFSHandler = handler.NewIPFSCluster(c, chain, app)
+	return nil
+}
 
 func NewIPFSClient() error {
 	ctx := context.Background()
@@ -32,7 +52,7 @@ func NewIPFSClient() error {
 	}
 	out := make(chan api.AddedOutput)
 	go func() {
-		err = c.Add(ctx, []string{filePath}, api.AddParams{}, out)
+		err = c.Add(ctx, []string{"filePath"}, api.AddParams{}, out)
 		if err != nil {
 			return
 		}
@@ -41,29 +61,6 @@ func NewIPFSClient() error {
 	fmt.Println(result.Cid)
 
 	return nil
-}
-
-func clusterApiDemo() {
-	// apiMAddr, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/0")
-	// if err!=nil{
-	// 	log.Fatalln(err)
-	// }
-	cfg := client.Config{
-		Host: "127.0.0.1",
-	}
-	ipfsClient, err := client.NewDefaultClient(&cfg)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	out := make(chan api.AddedOutput)
-	go func() {
-		err = ipfsClient.Add(context.Background(), []string{filePath}, api.AddParams{}, out)
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}()
-	result := <-out
-	fmt.Println(result.Cid)
 }
 
 func ipfsApiDemo() {

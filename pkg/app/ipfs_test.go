@@ -1,17 +1,14 @@
 package app
 
 import (
+	"starnet/chain-api/pkg/initapp"
 	"testing"
 )
 
 func TestClusterApiDemo(t *testing.T) {
 	// clusterApiDemo()
-	err := NewIPFSClient()
+	err := initapp.NewIPFSClient()
 	if err != nil {
 		t.Log(err)
 	}
-}
-
-func TestIpfsApiDemo(t *testing.T) {
-	ipfsApiDemo()
 }

@@ -49,6 +49,13 @@ username = ""
 password = ""
 addr = "127.0.0.1:6379"
 
+[mysql]
+database = "starnet"
+host = "127.0.0.1"
+password = ""
+port = 3306
+user = "root"
+
 [log]
 # debug, info, warn, error
 level = "debug"

@@ -72,6 +72,14 @@ type Config struct {
 		LogFile       string `mapstructure:"log_file"`
 	} `mapstructure:"log"`
 
+	MySQL struct {
+		Database string `mapstructure:"database"`
+		Host     string `mapstructure:"host"`
+		Port     int    `mapstructure:"port"`
+		User     string `mapstructure:"user"`
+		Password string `mapstructure:"password"`
+	} `mapstructure:"mysql"`
+
 	Redis []starnetRedis.Conf `mapstructure:"redis"`
 }
 
