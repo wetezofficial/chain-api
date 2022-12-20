@@ -4,8 +4,8 @@ import (
 	"context"
 	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
 
+	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/portal-api/pkg/cache"
-	serviceInterface "starnet/portal-api/service/interface"
 	daoInterface "starnet/starnet/dao/interface"
 )
 
@@ -32,8 +32,9 @@ func (s *IpfsService) Pin(ctx context.Context, c client.Client) error {
 	panic("implement me")
 }
 
-func (s *IpfsService) GetFile(ctx context.Context, c client.Client) interface{} {
+func (s *IpfsService) GetFile(ctx context.Context, c client.Client) (interface{}, error) {
 	//TODO implement me
+	//shell := c.IPFS(ctx)
 	panic("implement me")
 }
 

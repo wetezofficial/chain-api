@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 	"starnet/chain-api/config"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
-	serviceInterface "starnet/portal-api/service/interface"
+	serviceInterface "starnet/chain-api/service/interface"
 	daoInterface "starnet/starnet/dao/interface"
 )
 

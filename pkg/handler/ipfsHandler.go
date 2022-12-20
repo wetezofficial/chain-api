@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/appcontext"
 	"starnet/starnet/constant"
 	"time"
 )
@@ -71,7 +72,13 @@ func (h *IPFSCluster) List(c echo.Context) error {
 	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
 	defer cancelFunc()
 
-	// TODO: List
+	cc := c.(*appcontext.AppContext)
+	fileList, err := cc.IPFSSrv.GetFile(ctx, h.IPFSClient)
+	if err != nil {
+		return c.JSON(400, err)
+	}
+	fmt.Println(fileList)
+
 	fmt.Println(ctx.Err())
 
 	// FIXME: resp cid

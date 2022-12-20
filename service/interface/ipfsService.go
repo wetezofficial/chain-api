@@ -9,5 +9,5 @@ type IpfsService interface {
 	ListUserCid(ctx context.Context, c client.Client) error
 	Upload(ctx context.Context, c client.Client) error
 	Pin(ctx context.Context, c client.Client) error
-	GetFile(ctx context.Context, c client.Client) interface{}
+	GetFile(ctx context.Context, c client.Client) (interface{}, error)
 }
