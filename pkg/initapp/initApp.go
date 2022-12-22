@@ -2,6 +2,8 @@ package initapp
 
 import (
 	"fmt"
+	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
+	ma "github.com/multiformats/go-multiaddr"
 	"log"
 	"starnet/chain-api/pkg/db"
 	"starnet/chain-api/service"
@@ -47,7 +49,21 @@ func NewApp(configFile string) *app.App {
 	ipfsDao := dao.NewIPFSDao(_db)
 
 	rdbCache := cache.NewRedisCache(rdb, "chain:")
-	ipfsSrv := service.NewIpfsService(ipfsDao, rdbCache)
+
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", cfg.IPFSCluster.Host, cfg.IPFSCluster.Port))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	ipfsCfg := &client.Config{
+		APIAddr:           addr,
+		DisableKeepAlives: true,
+	}
+	ipfsClient, err := client.NewDefaultClient(ipfsCfg)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	ipfsSrv := service.NewIpfsService(ipfsDao, rdbCache, ipfsClient)
 
 	_app := app.App{
 		Config:      cfg,

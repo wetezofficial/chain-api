@@ -80,6 +80,11 @@ type Config struct {
 		Password string `mapstructure:"password"`
 	} `mapstructure:"mysql"`
 
+	IPFSCluster struct {
+		Host string `mapstructure:"host"`
+		Port int    `mapstructure:"port"`
+	} `mapstructure:"ipfs_cluster"`
+
 	Redis []starnetRedis.Conf `mapstructure:"redis"`
 }
 

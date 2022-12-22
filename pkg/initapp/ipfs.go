@@ -17,21 +17,7 @@ import (
 
 func initIPFSClient(app *app.App) error {
 	chain := constant.ChainIPFS
-
-	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", 9094))
-	if err != nil {
-		return err
-	}
-
-	cfg := &client.Config{
-		APIAddr:           addr,
-		DisableKeepAlives: true,
-	}
-	c, err := client.NewDefaultClient(cfg)
-	if err != nil {
-		return err
-	}
-	app.IPFSHandler = handler.NewIPFSCluster(c, chain, app)
+	app.IPFSHandler = handler.NewIPFSCluster(chain, app)
 	return nil
 }
 

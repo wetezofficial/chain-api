@@ -56,6 +56,10 @@ password = ""
 port = 3306
 user = "root"
 
+[ipfs_cluster]
+host = "127.0.0.1"
+port = 9094
+
 [log]
 # debug, info, warn, error
 level = "debug"

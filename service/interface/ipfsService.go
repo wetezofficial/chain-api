@@ -2,12 +2,14 @@ package serviceInterface
 
 import (
 	"context"
-	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
+	files "github.com/ipfs/go-ipfs-files"
+	"io"
+	"starnet/starnet/models"
 )
 
 type IpfsService interface {
-	ListUserCid(ctx context.Context, c client.Client) error
-	Upload(ctx context.Context, c client.Client) error
-	Pin(ctx context.Context, c client.Client) error
-	GetFile(ctx context.Context, c client.Client) (interface{}, error)
+	Upload(ctx context.Context, r io.Reader) (string, error)
+	UploadDir(ctx context.Context, multiFileR *files.MultiFileReader) (string, error)
+	Pin(ctx context.Context, cidStr string) error
+	ListUserFile(ctx context.Context, userID int, files *[]models.IPFSFile) error
 }
