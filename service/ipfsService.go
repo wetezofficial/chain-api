@@ -8,6 +8,8 @@ import (
 	shell "github.com/ipfs/go-ipfs-api"
 	files "github.com/ipfs/go-ipfs-files"
 	"io"
+	"mime/multipart"
+	"starnet/portal-api/app/cachekey"
 	"starnet/starnet/models"
 
 	serviceInterface "starnet/chain-api/service/interface"
@@ -18,9 +20,10 @@ import (
 var _ serviceInterface.IpfsService = &IpfsService{}
 
 // NewIpfsService .
-func NewIpfsService(ipfsDao daoInterface.IPFSDao, cache cache.Cache, client client.Client) *IpfsService {
+func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, client client.Client) *IpfsService {
 	return &IpfsService{
 		ipfsDao:   ipfsDao,
+		userDao:   userDao,
 		cache:     cache,
 		client:    client,
 		ipfsShell: client.IPFS(context.Background()),
@@ -30,13 +33,17 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, cache cache.Cache, client clie
 // IpfsService .
 type IpfsService struct {
 	ipfsDao   daoInterface.IPFSDao
+	userDao   daoInterface.UserDao
 	cache     cache.Cache
 	client    client.Client
 	ipfsShell *shell.Shell
 }
 
 // UploadDir directory to ipfs cluster
-func (s *IpfsService) UploadDir(ctx context.Context, multiFileR *files.MultiFileReader) (string, error) {
+func (s *IpfsService) UploadDir(ctx context.Context, apiKey string, multiFileR *files.MultiFileReader) (string, error) {
+	defer func() {
+		// TODO: delete file list
+	}()
 	out := make(chan api.AddedOutput)
 	e := make(chan error)
 	go func() {
@@ -53,11 +60,38 @@ func (s *IpfsService) UploadDir(ctx context.Context, multiFileR *files.MultiFile
 }
 
 // Upload file to ipfs cluster
-func (s *IpfsService) Upload(ctx context.Context, r io.Reader) (string, error) {
-	return s.ipfsShell.Add(r)
+func (s *IpfsService) Upload(ctx context.Context, apiKey string, f *multipart.FileHeader) (string, error) {
+	defer func() {
+		// TODO: delete file list
+	}()
+	file, err := f.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func(file multipart.File) {
+		_ = file.Close()
+	}(file)
+	hash, err := s.ipfsShell.Add(io.Reader(file))
+	if err != nil {
+		return "", err
+	}
+	if err := s.ipfsDao.SaveFile(&models.IPFSFile{
+		UserId:    s.getUserIDByAPIKey(ctx, apiKey),
+		CID:       hash,
+		PinStatus: models.PinStatusUnPin,
+		FileName:  f.Filename,
+		FileSize:  f.Size,
+	}); err != nil {
+		return "", err
+	}
+	return hash, nil
 }
 
 func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
+	defer func() {
+		// TODO: delete file list
+		// add apikey
+	}()
 	cid, err := api.DecodeCid(cidStr)
 	if err != nil {
 		return err
@@ -72,6 +106,10 @@ func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
 
 func (s *IpfsService) UnPin(ctx context.Context, cidStr string) error {
 	// TODO: check user permission
+	defer func() {
+		// TODO: delete file list
+		// add apikey
+	}()
 	cid, err := api.DecodeCid(cidStr)
 	if err != nil {
 		return err
@@ -84,15 +122,26 @@ func (s *IpfsService) UnPin(ctx context.Context, cidStr string) error {
 	return nil
 }
 
-func (s *IpfsService) ListUserFile(ctx context.Context, userID int, files *[]models.IPFSFile) error {
-	// TODO: get file list form database
-	// TODO: portal-api should have a api can list user file by userid
-	// TODO: apikey to query userID
+func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error {
 	return s.cache.CacheFn(ctx,
-		cache.KeyMeta{},
-		nil,
+		cachekey.UserIPFSFiles(apiKey),
+		files,
 		func() error {
-			return nil
+			return s.ipfsDao.ListUserFile(s.getUserIDByAPIKey(ctx, apiKey), files)
 		},
 	)
+}
+
+func (s *IpfsService) getUserIDByAPIKey(ctx context.Context, apiKey string) int {
+	var userID int
+	_ = s.cache.CacheFn(ctx,
+		cachekey.APIKeyUserID(apiKey),
+		&userID,
+		func() error {
+			var err error
+			userID, err = s.userDao.GetIDByAPIKey(apiKey)
+			return err
+		},
+	)
+	return userID
 }

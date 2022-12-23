@@ -5,7 +5,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"starnet/chain-api/pkg/app"
-	"starnet/chain-api/pkg/appcontext"
 )
 
 func NewRouter(app *app.App) *echo.Echo {
@@ -69,22 +68,12 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
-	// 注入 App
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			cc := &appcontext.AppContext{
-				Context: c,
-				App:     app,
-			}
-			return next(cc)
-		}
-	})
-	ipfsRouter := e.Group("/ipfs")
+	ipfsRouter := e.Group("/ipfs/v1/:apiKey")
 	{
-		ipfsRouter.POST("/ipfs/upload", app.IPFSHandler.Upload)
-		ipfsRouter.POST("/ipfs/pin", app.IPFSHandler.Pin)
-		ipfsRouter.POST("/ipfs/get", app.IPFSHandler.Get)
-		ipfsRouter.POST("/ipfs/list", app.IPFSHandler.List)
+		ipfsRouter.POST("/upload", app.IPFSHandler.Upload)
+		ipfsRouter.POST("/pin", app.IPFSHandler.Pin)
+		ipfsRouter.POST("/get", app.IPFSHandler.Get)
+		ipfsRouter.POST("/list", app.IPFSHandler.List)
 	}
 
 	return e

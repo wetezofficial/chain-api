@@ -3,16 +3,12 @@ package initapp
 import (
 	"context"
 	"fmt"
-	"os"
-	"starnet/chain-api/pkg/handler"
-	"starnet/starnet/constant"
-	"strings"
-
 	"github.com/ipfs-cluster/ipfs-cluster/api"
 	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
-	shell "github.com/ipfs/go-ipfs-api"
 	ma "github.com/multiformats/go-multiaddr"
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/handler"
+	"starnet/starnet/constant"
 )
 
 func initIPFSClient(app *app.App) error {
@@ -47,20 +43,4 @@ func NewIPFSClient() error {
 	fmt.Println(result.Cid)
 
 	return nil
-}
-
-func ipfsApiDemo() {
-	var err error
-	sh := shell.NewShell("localhost:9095")
-	cid, err := sh.Add(strings.NewReader("hello world!"))
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: %s", err)
-		os.Exit(1)
-	}
-	fmt.Printf("added %s", cid)
-	err = sh.Pin(cid)
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "error: %s", err)
-		os.Exit(1)
-	}
 }

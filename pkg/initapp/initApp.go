@@ -47,6 +47,7 @@ func NewApp(configFile string) *app.App {
 		log.Fatalln(err)
 	}
 	ipfsDao := dao.NewIPFSDao(_db)
+	userDao := dao.NewUserDao(_db)
 
 	rdbCache := cache.NewRedisCache(rdb, "chain:")
 
@@ -63,7 +64,7 @@ func NewApp(configFile string) *app.App {
 		log.Fatalln(err)
 	}
 
-	ipfsSrv := service.NewIpfsService(ipfsDao, rdbCache, ipfsClient)
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, ipfsClient)
 
 	_app := app.App{
 		Config:      cfg,
@@ -71,7 +72,6 @@ func NewApp(configFile string) *app.App {
 		Rdb:         rdb,
 		DB:          _db,
 		RateLimiter: rateLimiter,
-		IPFSDao:     ipfsDao,
 		IPFSSrv:     ipfsSrv,
 	}
 

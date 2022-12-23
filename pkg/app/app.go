@@ -8,7 +8,6 @@ import (
 	"starnet/chain-api/config"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	serviceInterface "starnet/chain-api/service/interface"
-	daoInterface "starnet/starnet/dao/interface"
 )
 
 // App 所有的依赖信息都在这里
@@ -66,7 +65,6 @@ type App struct {
 	// ipfs
 	IPFSHandler IPFSHandler
 
-	IPFSDao daoInterface.IPFSDao
 	IPFSSrv serviceInterface.IpfsService
 }
 
