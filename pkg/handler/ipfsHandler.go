@@ -6,6 +6,7 @@ import (
 	files "github.com/ipfs/go-ipfs-files"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"starnet/chain-api/pkg/app"
@@ -210,18 +211,26 @@ func (h *IPFSHandler) Get(c echo.Context) error {
 
 	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
 		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusOK, rlErr)
+		return c.JSON(http.StatusBadRequest, rlErr)
 	}
 
-	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
-	defer cancelFunc()
+	var cid string
+	err = echo.PathParamsBinder(c).String("cid", &cid).BindError()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
 
-	// TODO: Get
-	// proxy request to ipfs gateway
-	fmt.Println(ctx.Err())
+	object, err := h.ipfsService.GetObject(cid)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+	data, err := io.ReadAll(object)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
 
 	// TODO: add file size compute
-	return c.JSONBlob(http.StatusOK, nil)
+	return c.JSONBlob(http.StatusOK, data)
 }
 
 func (h *IPFSHandler) Pin(c echo.Context) error {
@@ -240,9 +249,16 @@ func (h *IPFSHandler) Pin(c echo.Context) error {
 	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
 	defer cancelFunc()
 
-	// TODO: Pin
-	fmt.Println(ctx.Err())
+	var cid string
+	err = echo.PathParamsBinder(c).String("cid", &cid).BindError()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
 
-	// FIXME: resp cid
+	err = h.ipfsService.Pin(ctx, cid)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
 	return c.JSON(http.StatusOK, nil)
 }

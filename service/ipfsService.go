@@ -41,9 +41,6 @@ type IpfsService struct {
 
 // UploadDir directory to ipfs cluster
 func (s *IpfsService) UploadDir(ctx context.Context, apiKey string, multiFileR *files.MultiFileReader) (string, error) {
-	defer func() {
-		// TODO: delete file list
-	}()
 	out := make(chan api.AddedOutput)
 	e := make(chan error)
 	go func() {
@@ -53,20 +50,32 @@ func (s *IpfsService) UploadDir(ctx context.Context, apiKey string, multiFileR *
 	for {
 		select {
 		case err := <-e:
-			return rootCid, err
+			if err != nil {
+				return "", err
+			}
+			goto SAVED
 		case result := <-out:
 			if result.Cid.String() != "b" {
 				rootCid = result.Cid.String()
 			}
 		}
 	}
+SAVED:
+	if err := s.ipfsDao.SaveFile(&models.IPFSFile{
+		UserId:    s.getUserIDByAPIKey(ctx, apiKey),
+		CID:       rootCid,
+		PinStatus: models.PinStatusUnPin,
+		// TODO:
+		FileName: "",
+		FileSize: 0,
+	}); err != nil {
+		return "", err
+	}
+	return rootCid, nil
 }
 
 // Upload file to ipfs cluster
 func (s *IpfsService) Upload(ctx context.Context, apiKey string, f *multipart.FileHeader) (string, error) {
-	defer func() {
-		// TODO: delete file list
-	}()
 	file, err := f.Open()
 	if err != nil {
 		return "", err
@@ -91,10 +100,6 @@ func (s *IpfsService) Upload(ctx context.Context, apiKey string, f *multipart.Fi
 }
 
 func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
-	defer func() {
-		// TODO: delete file list
-		// add apikey
-	}()
 	cid, err := api.DecodeCid(cidStr)
 	if err != nil {
 		return err
@@ -107,12 +112,12 @@ func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
 	return nil
 }
 
+func (s *IpfsService) GetObject(cidStr string) (io.ReadCloser, error) {
+	return s.ipfsShell.Cat(cidStr)
+}
+
 func (s *IpfsService) UnPin(ctx context.Context, cidStr string) error {
 	// TODO: check user permission
-	defer func() {
-		// TODO: delete file list
-		// add apikey
-	}()
 	cid, err := api.DecodeCid(cidStr)
 	if err != nil {
 		return err
