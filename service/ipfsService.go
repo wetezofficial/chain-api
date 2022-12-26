@@ -49,12 +49,15 @@ func (s *IpfsService) UploadDir(ctx context.Context, apiKey string, multiFileR *
 	go func() {
 		e <- s.client.AddMultiFile(ctx, multiFileR, api.AddParams{}, out)
 	}()
+	var rootCid string
 	for {
 		select {
 		case err := <-e:
-			return "", err
+			return rootCid, err
 		case result := <-out:
-			return result.Cid.String(), nil
+			if result.Cid.String() != "b" {
+				rootCid = result.Cid.String()
+			}
 		}
 	}
 }
