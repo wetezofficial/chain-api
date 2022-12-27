@@ -9,12 +9,11 @@ import (
 	files "github.com/ipfs/go-ipfs-files"
 	"io"
 	"mime/multipart"
-	"starnet/portal-api/app/cachekey"
-	"starnet/starnet/models"
-
 	serviceInterface "starnet/chain-api/service/interface"
+	"starnet/portal-api/app/cachekey"
 	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
+	"starnet/starnet/models"
 )
 
 var _ serviceInterface.IpfsService = &IpfsService{}

@@ -76,5 +76,10 @@ func NewRouter(app *app.App) *echo.Echo {
 		ipfsRouter.POST("/list", app.IPFSHandler.List)
 	}
 
+	ipfsProxyRouter := e.Group("/api/v0")
+	{
+		ipfsProxyRouter.POST("/add", app.IPFSHandler.Proxy)
+	}
+
 	return e
 }

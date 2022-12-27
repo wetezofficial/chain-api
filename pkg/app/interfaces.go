@@ -18,4 +18,5 @@ type IPFSHandler interface {
 	List(ctx echo.Context) error
 	Get(ctx echo.Context) error
 	Pin(ctx echo.Context) error
+	Proxy(ctx echo.Context) error
 }

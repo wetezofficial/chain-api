@@ -10,6 +10,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/go-uuid v1.0.1
+	github.com/imroc/req/v3 v3.26.5 // indirect
 	github.com/ipfs-cluster/ipfs-cluster v1.0.4
 	github.com/ipfs/go-ipfs-api v0.3.0
 	github.com/jonboulle/clockwork v0.3.0 // indirect

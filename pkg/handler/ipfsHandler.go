@@ -262,3 +262,62 @@ func (h *IPFSHandler) Pin(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, nil)
 }
+
+func (h *IPFSHandler) Proxy(c echo.Context) error {
+	logger := h.newLogger(c)
+
+	//apiKey, err := h.JsonHandler.bindApiKey(c)
+	//if err != nil {
+	//	return c.JSON(http.StatusBadRequest, err)
+	//}
+	//
+	//if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+	//	return c.JSON(http.StatusBadRequest, rlErr)
+	//}
+
+	w := c.Response().Writer
+	r := c.Request()
+
+	// Create a new HTTP client
+	client := &http.Client{}
+
+	// Create a new request to the target URL FIXME: request base url
+	targetReq, err := http.NewRequest(r.Method, "http://127.0.0.1:9095"+r.URL.Path, r.Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	// Copy the request headers to the new request
+	targetReq.Header = r.Header
+
+	// Forward the request to the target URL
+	targetResp, err := client.Do(targetReq)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Error("close the targetResp err:", zap.Error(err))
+		}
+	}(targetResp.Body)
+
+	// Copy the response headers to the original response
+	for k, v := range targetResp.Header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(targetResp.StatusCode)
+
+	// Copy the response body to the original response
+	// TODO: read the data from the body
+	body, err := io.ReadAll(targetResp.Body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+	_, err = w.Write(body)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+	return nil
+}

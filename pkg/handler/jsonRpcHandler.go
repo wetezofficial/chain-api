@@ -93,7 +93,7 @@ func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods []strin
 	return &req, nil
 }
 
-func (h *JsonRpcHandler) pathBind(apiKey, requestURI string, blackMethods []string) (*jsonrpc.TenderMintRequest, *jsonrpc.JsonRpcErr) {
+func (h *JsonRpcHandler) tendermintPathBind(apiKey, requestURI string, blackMethods []string) (*jsonrpc.TenderMintRequest, *jsonrpc.JsonRpcErr) {
 	uriList := strings.Split(requestURI, "/")
 	pathAllStr := uriList[len(uriList)-1]
 	urlQueryList := strings.Split(pathAllStr, "?")
@@ -213,7 +213,7 @@ func (h *JsonRpcHandler) TendermintHttp(c echo.Context) error {
 		return err
 	}
 
-	tenderMintRequest, vErr := h.pathBind(apiKey, c.Request().RequestURI, h.httpBlackMethods)
+	tenderMintRequest, vErr := h.tendermintPathBind(apiKey, c.Request().RequestURI, h.httpBlackMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
 	}
