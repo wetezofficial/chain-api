@@ -229,7 +229,10 @@ func (h *IPFSHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	// TODO: add file size compute
+	// bandwidth use check
+	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(data))); err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
 	return c.JSONBlob(http.StatusOK, data)
 }
 
@@ -266,15 +269,15 @@ func (h *IPFSHandler) Pin(c echo.Context) error {
 func (h *IPFSHandler) Proxy(c echo.Context) error {
 	logger := h.newLogger(c)
 
-	//apiKey, err := h.JsonHandler.bindApiKey(c)
-	//if err != nil {
-	//	return c.JSON(http.StatusBadRequest, err)
-	//}
-	//
-	//if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-	//	return c.JSON(http.StatusBadRequest, rlErr)
-	//}
+	apiKey, err := h.JsonHandler.bindApiKey(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+		return c.JSON(http.StatusBadRequest, rlErr)
+	}
 
 	w := c.Response().Writer
 	r := c.Request()
@@ -317,6 +320,11 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 	_, err = w.Write(body)
 	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	// bandwidth use check
+	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(body))); err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 	return nil

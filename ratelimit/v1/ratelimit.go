@@ -2,6 +2,7 @@ package ratelimitv1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,6 +19,9 @@ const (
 	ExceedSecondLimit int = -2
 	ExceedDayLimit    int = -3
 )
+
+// 5gb
+var limitMonthBandwidth int64 = 1024 * 1024 * 1024 * 5
 
 type RateLimiter struct {
 	rdb       redis.UniversalClient
@@ -96,16 +100,13 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 
 	// add chain request count
 	if res == 1 && n > 0 {
-		l.rdb.IncrBy(ctx, cachekey.GetChainDayKey(chainID, t), int64(n)).Err()
-		if err != nil {
+		if err = l.rdb.IncrBy(ctx, cachekey.GetChainDayKey(chainID, t), int64(n)).Err(); err != nil {
 			logger.Error("failed to save chain day quota", zap.Error(err))
 		}
-		l.rdb.IncrBy(ctx, cachekey.GetChainHourKey(chainID), int64(n)).Err()
-		if err != nil {
+		if err = l.rdb.IncrBy(ctx, cachekey.GetChainHourKey(chainID), int64(n)).Err(); err != nil {
 			logger.Error("failed to save chain newest hour quota", zap.Error(err))
 		}
-		l.rdb.IncrBy(ctx, cachekey.GetChainTotalKey(chainID), int64(n)).Err()
-		if err != nil {
+		if err = l.rdb.IncrBy(ctx, cachekey.GetChainTotalKey(chainID), int64(n)).Err(); err != nil {
 			logger.Error("failed to save chain day quota", zap.Error(err))
 		}
 	}
@@ -118,6 +119,34 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 	if res != Allow {
 		logger.Debug("exceeded rate limit", zap.Int("result", res))
 		return ExceededRateLimitError
+	}
+
+	return nil
+}
+
+func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey string, fileSize int64) error {
+	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
+
+	inWhitelist, err := l.allowWhitelist(ctx, chainID, apiKey, 1)
+	if err != nil {
+		return err
+	}
+	if inWhitelist {
+		return nil
+	}
+
+	t := time.Now()
+
+	i, _ := l.rdb.Get(ctx, cachekey.GetBandwidthMonthKey(chainID, t)).Int64()
+	if i+fileSize > limitMonthBandwidth {
+		return errors.New("exceeded bandwidth limit")
+	}
+
+	if err = l.rdb.IncrBy(ctx, cachekey.GetBandWidthDayKey(chainID, t), fileSize).Err(); err != nil {
+		logger.Error("failed to save chain day bandwidth:", zap.Error(err))
+	}
+	if err = l.rdb.IncrBy(ctx, cachekey.GetBandwidthMonthKey(chainID, t), fileSize).Err(); err != nil {
+		logger.Error("failed to save chain month bandwidth:", zap.Error(err))
 	}
 
 	return nil
