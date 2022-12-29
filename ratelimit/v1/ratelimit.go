@@ -18,6 +18,9 @@ const (
 	NotExist          int = -1
 	ExceedSecondLimit int = -2
 	ExceedDayLimit    int = -3
+
+	BandWidthUpload   = 1
+	BandWidthDownload = 2
 )
 
 // 5gb
@@ -124,7 +127,7 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 	return nil
 }
 
-func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey string, fileSize int64) error {
+func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey string, fileSize int64, bwType uint8) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 
 	inWhitelist, err := l.allowWhitelist(ctx, chainID, apiKey, 1)
@@ -137,16 +140,37 @@ func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey s
 
 	t := time.Now()
 
-	i, _ := l.rdb.Get(ctx, cachekey.GetBandwidthMonthKey(chainID, t)).Int64()
-	if i+fileSize > limitMonthBandwidth {
-		return errors.New("exceeded bandwidth limit")
-	}
+	// TODO: the limit rule
 
-	if err = l.rdb.IncrBy(ctx, cachekey.GetBandWidthDayKey(chainID, t), fileSize).Err(); err != nil {
-		logger.Error("failed to save chain day bandwidth:", zap.Error(err))
-	}
-	if err = l.rdb.IncrBy(ctx, cachekey.GetBandwidthMonthKey(chainID, t), fileSize).Err(); err != nil {
-		logger.Error("failed to save chain month bandwidth:", zap.Error(err))
+	switch bwType {
+	case BandWidthUpload:
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWDayUpKey(chainID, t), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain day bandwidth:", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWHourUpKey(chainID), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain month bandwidth:", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWMonthUpKey(chainID, t), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain newest hour quota", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWTotalUpKey(chainID), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain day quota", zap.Error(err))
+		}
+	case BandWidthDownload:
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWDayDownKey(chainID, t), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain day bandwidth:", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWHourDownKey(chainID), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain month bandwidth:", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWMonthDownKey(chainID, t), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain newest hour quota", zap.Error(err))
+		}
+		if err = l.rdb.IncrBy(ctx, cachekey.GetBWTotalDownKey(chainID), fileSize).Err(); err != nil {
+			logger.Error("failed to save chain day quota", zap.Error(err))
+		}
+	default:
+		return errors.New("unsupported type")
 	}
 
 	return nil

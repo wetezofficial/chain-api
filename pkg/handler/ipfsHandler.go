@@ -10,6 +10,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/request"
+	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
 	"starnet/starnet/models"
@@ -37,8 +39,8 @@ func (h *IPFSHandler) newLogger(c echo.Context) *zap.Logger {
 	return h.JsonHandler.logger.With(zap.String("chain", h.JsonHandler.chain.Name), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 }
 
-// Upload TODO: split to a UploadFile & UploadDir
-func (h *IPFSHandler) Upload(c echo.Context) error {
+// Add .
+func (h *IPFSHandler) Add(c echo.Context) error {
 	logger := h.newLogger(c)
 
 	apiKey, err := h.JsonHandler.bindApiKey(c)
@@ -51,64 +53,74 @@ func (h *IPFSHandler) Upload(c echo.Context) error {
 		return c.JSON(http.StatusOK, rlErr)
 	}
 
+	var params = request.AddParam{}
+	if err := c.Bind(&params); err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
 	// Multipart form
 	form, err := c.MultipartForm()
 	if err != nil {
+		logger.Error("param bind error", zap.Error(err))
 		return c.JSON(http.StatusBadRequest, err)
 	}
-	requestFiles := form.File["files"]
-
-	if len(requestFiles) == 0 {
-		return c.JSON(http.StatusOK, nil)
-	} else if len(requestFiles) == 1 {
-		cid, err := h.ipfsService.Upload(c.Request().Context(), apiKey, requestFiles[0])
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, err)
-		}
-		return c.JSON(http.StatusOK, cid)
-	}
+	requestFiles := form.File["file"]
 
 	var rootDir string
-	rootDir = "root"
-	//for _, f := range requestFiles {
-	//	if strings.Contains(f.Filename, "/") {
-	//		rootDir = strings.Split(f.Filename, "/")[0]
-	//		break
-	//	}
-	//}
+	var dataSize int64
+	for _, f := range requestFiles {
+		if strings.Contains(f.Filename, "/") {
+			rootDir = "root"
+		}
+		dataSize += f.Size
+	}
+
+	// bandwidth use check
+	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, dataSize, ratelimitv1.BandWidthUpload); err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
 	fs := make(map[string]files.Node)
 	fileMap := make(map[string]*multipart.FileHeader)
-	for _, f := range requestFiles {
-		fileMap[rootDir+"-"+f.Filename] = f
-	}
-	tree := processFileMap(rootDir, fileMap)
-	for _, node := range tree.Files {
-		fmt.Println(node)
-		if node.FileData == nil {
-			fs[node.Name], err = newMapDirectory(node.Files)
+	if rootDir != "" && params.WrapWithDirectory {
+		for _, f := range requestFiles {
+			fileMap[rootDir+"-"+f.Filename] = f
+		}
+		tree := processFileMap(rootDir, fileMap)
+		for _, node := range tree.Files {
+			fmt.Println(node)
+			if node.FileData == nil {
+				fs[node.Name], err = newMapDirectory(node.Files)
+				if err != nil {
+					return c.JSON(http.StatusBadRequest, err)
+				}
+			} else {
+				file, err := node.FileData.Open()
+				if err != nil {
+					return c.JSON(http.StatusBadRequest, err)
+				}
+				fs[node.Name] = files.NewReaderFile(file)
+			}
+		}
+	} else {
+		for _, f := range requestFiles {
+			file, err := f.Open()
 			if err != nil {
 				return c.JSON(http.StatusBadRequest, err)
 			}
-		} else {
-			file, err := node.FileData.Open()
-			if err != nil {
-				return c.JSON(http.StatusBadRequest, err)
-			}
-			fs[node.Name] = files.NewReaderFile(file)
+			fs := make(map[string]files.Node)
+			fs[f.Filename] = files.NewReaderFile(file)
 		}
 	}
 
-	//sf := files.NewMapDirectory(map[string]files.Node{
-	//	rootDir: files.NewMapDirectory(fs),
-	//})
 	sf := files.NewMapDirectory(fs)
 
-	cid, err := h.ipfsService.UploadDir(c.Request().Context(), apiKey, files.NewMultiFileReader(sf, true))
+	results, err := h.ipfsService.Add(c.Request().Context(), apiKey, params, files.NewMultiFileReader(sf, true))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	return c.JSON(http.StatusOK, cid)
+	return c.JSON(http.StatusOK, results)
 }
 
 func newMapDirectory(teeFiles map[string]fileTree) (files.Directory, error) {
@@ -230,7 +242,7 @@ func (h *IPFSHandler) Get(c echo.Context) error {
 	}
 
 	// bandwidth use check
-	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(data))); err != nil {
+	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(data)), ratelimitv1.BandWidthDownload); err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 	return c.JSONBlob(http.StatusOK, data)
@@ -324,8 +336,9 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	// bandwidth use check
-	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(body))); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
+	// TODO: r.URL.Path -> BandWidthType
+	//if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(body))); err != nil {
+	//	return c.JSON(http.StatusBadRequest, err)
+	//}
 	return nil
 }

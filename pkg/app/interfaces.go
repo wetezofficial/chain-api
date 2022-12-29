@@ -14,7 +14,7 @@ type WsHandler interface {
 }
 
 type IPFSHandler interface {
-	Upload(ctx echo.Context) error
+	Add(ctx echo.Context) error
 	List(ctx echo.Context) error
 	Get(ctx echo.Context) error
 	Pin(ctx echo.Context) error

@@ -70,7 +70,7 @@ func NewRouter(app *app.App) *echo.Echo {
 
 	ipfsRouter := e.Group("/ipfs/v1/:apiKey")
 	{
-		ipfsRouter.POST("/upload", app.IPFSHandler.Upload)
+		ipfsRouter.POST("/add", app.IPFSHandler.Add)
 		ipfsRouter.POST("/pin/:cid", app.IPFSHandler.Pin)
 		ipfsRouter.POST("/get/:cid", app.IPFSHandler.Get)
 		ipfsRouter.POST("/list", app.IPFSHandler.List)
