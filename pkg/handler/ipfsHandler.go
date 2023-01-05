@@ -75,11 +75,6 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 		dataSize += f.Size
 	}
 
-	// bandwidth use check
-	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, dataSize, ratelimitv1.BandWidthUpload); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
 	fs := make(map[string]files.Node)
 	fileMap := make(map[string]*multipart.FileHeader)
 	if rootDir != "" && params.WrapWithDirectory {
@@ -108,7 +103,6 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 			if err != nil {
 				return c.JSON(http.StatusBadRequest, err)
 			}
-			fs := make(map[string]files.Node)
 			fs[f.Filename] = files.NewReaderFile(file)
 		}
 	}
@@ -117,6 +111,11 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 
 	results, err := h.ipfsService.Add(c.Request().Context(), apiKey, params, files.NewMultiFileReader(sf, true))
 	if err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
+	// bandwidth use check
+	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, dataSize, ratelimitv1.BandWidthUpload); err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
@@ -297,7 +296,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	// Create a new HTTP client
 	client := &http.Client{}
 
-	// Create a new request to the target URL FIXME: request base url
+	// Create a new request to the target URL TODO: request base url
 	targetReq, err := http.NewRequest(r.Method, "http://127.0.0.1:9095"+r.URL.Path, r.Body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)

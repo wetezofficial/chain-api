@@ -3,11 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/ipfs-cluster/ipfs-cluster/api"
-	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
-	shell "github.com/ipfs/go-ipfs-api"
-	files "github.com/ipfs/go-ipfs-files"
 	"io"
+
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	serviceInterface "starnet/chain-api/service/interface"
@@ -15,6 +12,11 @@ import (
 	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/models"
+
+	"github.com/ipfs-cluster/ipfs-cluster/api"
+	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
+	shell "github.com/ipfs/go-ipfs-api"
+	files "github.com/ipfs/go-ipfs-files"
 )
 
 var _ serviceInterface.IpfsService = &IpfsService{}
@@ -45,7 +47,7 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, apiParam request.A
 	e := make(chan error)
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
 	go func() {
-		e <- s.client.AddMultiFile(ctx, multiFileR, api.AddParams{
+		param := api.AddParams{
 			Recursive: apiParam.Recursive,
 			Hidden:    apiParam.Hidden,
 			Wrap:      apiParam.WrapWithDirectory,
@@ -56,7 +58,8 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, apiParam request.A
 				CidVersion: apiParam.CidVersion,
 				NoCopy:     apiParam.Nocopy,
 			},
-		}, out)
+		}
+		e <- s.client.AddMultiFile(ctx, multiFileR, param, out)
 	}()
 	var dirHash string
 	var results []response.AddResp
@@ -121,6 +124,10 @@ func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
 
 func (s *IpfsService) GetObject(cidStr string) (io.ReadCloser, error) {
 	return s.ipfsShell.Cat(cidStr)
+}
+
+func (s *IpfsService) UpdateUserTotalSave(ctx context.Context,apiKey string, fileSize int64) (int64, error) {
+	return s.ipfsDao.UpdateUserTotalSave(s.getUserIDByAPIKey(ctx, apiKey), fileSize)
 }
 
 func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string) error {

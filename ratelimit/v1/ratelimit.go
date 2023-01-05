@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"starnet/chain-api/service"
 	"starnet/starnet/cachekey"
 
 	"github.com/go-redis/redis/v8"
@@ -28,13 +29,15 @@ var limitMonthBandwidth int64 = 1024 * 1024 * 1024 * 5
 
 type RateLimiter struct {
 	rdb       redis.UniversalClient
+	ipfsSrv   *service.IpfsService
 	logger    *zap.Logger
 	whitelist []string
 }
 
-func NewRateLimiter(rdb redis.UniversalClient, logger *zap.Logger, whitelist []string) (*RateLimiter, error) {
+func NewRateLimiter(rdb redis.UniversalClient, ipfsSrv *service.IpfsService, logger *zap.Logger, whitelist []string) (*RateLimiter, error) {
 	return &RateLimiter{
 		rdb:       rdb,
+		ipfsSrv:   ipfsSrv,
 		logger:    logger,
 		whitelist: whitelist,
 	}, nil
@@ -130,48 +133,53 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey string, fileSize int64, bwType uint8) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 
-	inWhitelist, err := l.allowWhitelist(ctx, chainID, apiKey, 1)
-	if err != nil {
+	if inWhitelist, err := l.allowWhitelist(ctx, chainID, apiKey, 1); err != nil {
 		return err
-	}
-	if inWhitelist {
+	} else if inWhitelist {
 		return nil
 	}
 
 	t := time.Now()
 
-	// TODO: the limit rule
-
+	// TODO: the limit rule check
 	switch bwType {
 	case BandWidthUpload:
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWDayUpKey(chainID, t), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain day bandwidth:", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWHourUpKey(chainID), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain month bandwidth:", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWMonthUpKey(chainID, t), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain newest hour quota", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWTotalUpKey(chainID), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain day quota", zap.Error(err))
-		}
+		_ = l.increaseUserUpBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
 	case BandWidthDownload:
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWDayDownKey(chainID, t), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain day bandwidth:", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWHourDownKey(chainID), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain month bandwidth:", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWMonthDownKey(chainID, t), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain newest hour quota", zap.Error(err))
-		}
-		if err = l.rdb.IncrBy(ctx, cachekey.GetBWTotalDownKey(chainID), fileSize).Err(); err != nil {
-			logger.Error("failed to save chain day quota", zap.Error(err))
-		}
+		_ = l.increaseUserDownBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
 	default:
 		return errors.New("unsupported type")
 	}
+
+	return nil
+}
+
+func (l *RateLimiter) increaseAndSetExpire(ctx context.Context, key string, value int64, expireTime time.Duration, logger *zap.Logger) {
+	result, err := l.rdb.IncrBy(ctx, key, value).Result()
+	if err != nil {
+		logger.Error("failed to save chain day bandwidth download:", zap.Error(err))
+	}
+	if result == value {
+		if err != l.rdb.Expire(ctx, key, expireTime).Err() {
+			logger.Error("failed to save chain day bandwidth download expire:", zap.Error(err))
+		}
+	}
+}
+
+func (l *RateLimiter) increaseUserUpBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourUpKey(apiKey, chainID), fileSize, time.Minute*90, logger)
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
+	_, _ = l.ipfsSrv.UpdateUserTotalSave(ctx, apiKey, fileSize)
+
+	// TODO: refactor total get from ipfsUserInfo
+	return nil
+}
+
+func (l *RateLimiter) increaseUserDownBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourDownKey(apiKey, chainID), fileSize, time.Minute*90, logger)
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
+	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 
 	return nil
 }

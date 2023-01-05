@@ -2,12 +2,14 @@ package initapp
 
 import (
 	"fmt"
-	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
-	ma "github.com/multiformats/go-multiaddr"
 	"log"
+
 	"starnet/chain-api/pkg/db"
 	"starnet/chain-api/service"
 	"starnet/portal-api/pkg/cache"
+
+	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
+	ma "github.com/multiformats/go-multiaddr"
 
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
@@ -37,15 +39,11 @@ func NewApp(configFile string) *app.App {
 	}
 	fmt.Println("api keys whitelist:", apiKeysWhitelist)
 
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, apiKeysWhitelist)
-	if err != nil {
-		logger.Fatal("fail to get rate limiter", zap.Error(err))
-	}
-
 	_db, err := db.NewDB(cfg, logger)
 	if err != nil {
 		log.Fatalln(err)
 	}
+
 	ipfsDao := dao.NewIPFSDao(_db)
 	userDao := dao.NewUserDao(_db)
 
@@ -65,6 +63,11 @@ func NewApp(configFile string) *app.App {
 	}
 
 	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, ipfsClient)
+
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
+	if err != nil {
+		logger.Fatal("fail to get rate limiter", zap.Error(err))
+	}
 
 	_app := app.App{
 		Config:      cfg,

@@ -2,11 +2,12 @@ package serviceInterface
 
 import (
 	"context"
-	files "github.com/ipfs/go-ipfs-files"
 	"io"
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	"starnet/starnet/models"
+
+	files "github.com/ipfs/go-ipfs-files"
 )
 
 type IpfsService interface {
@@ -15,4 +16,5 @@ type IpfsService interface {
 	Pin(ctx context.Context, cidStr string) error
 	UnPin(ctx context.Context, apiKey, cidStr string) error
 	ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error
+	UpdateUserTotalSave(ctx context.Context,apiKey string, fileSize int64) (int64, error)
 }
