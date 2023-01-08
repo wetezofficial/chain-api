@@ -64,6 +64,17 @@ func (l *RateLimiter) allowWhitelist(ctx context.Context, chainID uint8, apiKey 
 	return inWhitelist, nil
 }
 
+func (l *RateLimiter) CheckInWhiteList(apiKey string) bool {
+	inWhitelist := false
+	for _, _apiKey := range l.whitelist {
+		if _apiKey == apiKey {
+			inWhitelist = true
+			break
+		}
+	}
+	return inWhitelist
+}
+
 func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n int) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 

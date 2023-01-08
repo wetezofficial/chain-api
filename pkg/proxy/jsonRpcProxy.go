@@ -10,7 +10,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -24,11 +23,12 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
 type UpstreamJsonRpcResponse struct {
-	ID int64 `json:"id"`
+	ID interface{} `json:"id"`
 	// JsonRpcVersion A String specifying the version of the JSON-RPC protocol. MUST be exactly "2.0".
 	JsonRpcVersion string          `json:"jsonrpc"`
 	Error          json.RawMessage `json:"error,omitempty"`
@@ -38,7 +38,7 @@ type UpstreamJsonRpcResponse struct {
 type request struct {
 	*jsonrpc.JsonRpcRequest
 	*jsonrpc.TenderMintRequest
-	ID       int64 `json:"id"` // overwrite id while sending to upstream
+	ID       interface{} `json:"id"` // overwrite id while sending to upstream
 	cacheKey *string
 	cacheFn  func(request *request, result []byte) error
 	ctx      context.Context
@@ -88,7 +88,7 @@ func (p *JsonRpcProxy) fromRequest(rawreq *jsonrpc.JsonRpcRequest) (*request, er
 
 func (p *JsonRpcProxy) HttpProxy(ctx context.Context, logger *zap.Logger, rawreq *jsonrpc.JsonRpcRequest) ([]byte, error) {
 	if rawreq.IsBatchCall() {
-		return p.DoHttpUpstreamCall(rawreq)
+		return p.DoHttpUpstreamCall(rawreq, logger)
 	}
 
 	req, err := p.fromRequest(rawreq)
@@ -149,32 +149,37 @@ func (p *JsonRpcProxy) CacheFn(req *request, result []byte) error {
 	return p.rdb.Set(context.TODO(), *req.cacheKey, result, p.cfg.CacheTime).Err()
 }
 
-func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest) ([]byte, error) {
+func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest, logger *zap.Logger) ([]byte, error) {
 	rawreq, err := json.Marshal(req)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to marshal request")
 	}
 
 	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
-		return nil, err
+		logger.Error("The rawreq is", zap.ByteString("rawreq", rawreq))
+		return nil, errors.Wrap(err, "fail to post request")
 	}
 
 	buff := bytes.Buffer{}
 	_, err = buff.ReadFrom(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "fail to read response body")
 	}
 
 	return buff.Bytes(), nil
 }
 
 func (p *JsonRpcProxy) HttpUpstream(req *request) ([]byte, error) {
-	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest)
+	resp, err := p.DoHttpUpstreamCall(req.JsonRpcRequest, req.logger)
+	if err != nil {
+		return nil, err
+	}
 	req.logger.Debug("new upstream response", zap.ByteString("resp", resp))
 
 	upstreamResp := UpstreamJsonRpcResponse{}
 	if err = json.Unmarshal(resp, &upstreamResp); err != nil {
+		req.logger.Error("fail to unmarshal upstream response", zap.ByteString("resp", resp))
 		return nil, err
 	}
 
@@ -200,7 +205,7 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*Upstr
 		logger:   logger,
 		proxy:    p,
 		mutex:    new(sync.Mutex),
-		requests: make(map[int64]*request),
+		requests: make(map[interface{}]*request),
 	}
 	go u.run()
 	return u, nil

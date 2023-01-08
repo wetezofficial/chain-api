@@ -55,6 +55,10 @@ type App struct {
 	// okc
 	OKCHttpHandler HttpHandler
 	OKCWsHandler   WsHandler
+
+	// irisnet
+	IRISnetHttpHandler HttpHandler
+	IRISnetWsHandler   WsHandler
 }
 
 func (a *App) Start() {

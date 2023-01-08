@@ -10,9 +10,9 @@ import (
 	"starnet/starnet/constant"
 )
 
-func initEvmosHandler(app *app.App) error {
-	chain := constant.ChainEvmos
-	chainUpstreamCfg := app.Config.Upstream.Evmos
+func initIRISnetHandler(app *app.App) error {
+	chain := constant.ChainIRISnet
+	chainUpstreamCfg := app.Config.Upstream.IRISnet
 
 	cfg := proxy.JsonRpcProxyConfig{
 		HttpUpstream:     chainUpstreamCfg.Http,
@@ -36,8 +36,8 @@ func initEvmosHandler(app *app.App) error {
 		app,
 	)
 
-	app.EvmosHttpHandler = h
-	app.EvmosWsHandler = h
+	app.IRISnetHttpHandler = h
+	app.IRISnetWsHandler = h
 
 	return nil
 }
