@@ -96,18 +96,11 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 
 	// add chain request count
 	if res == 1 && n > 0 {
-		l.rdb.IncrBy(ctx, cachekey.GetChainDayKey(chainID, t), int64(n)).Err()
-		if err != nil {
-			logger.Error("failed to save chain day quota", zap.Error(err))
-		}
-		l.rdb.IncrBy(ctx, cachekey.GetChainHourKey(chainID), int64(n)).Err()
-		if err != nil {
-			logger.Error("failed to save chain newest hour quota", zap.Error(err))
-		}
-		l.rdb.IncrBy(ctx, cachekey.GetChainTotalKey(chainID), int64(n)).Err()
-		if err != nil {
-			logger.Error("failed to save chain day quota", zap.Error(err))
-		}
+		l.increaseAndSetExpire(ctx, cachekey.GetChainHourKey(chainID, t), int64(n), time.Minute*90, logger)
+		l.increaseAndSetExpire(ctx, cachekey.GetChainDayKey(chainID, t), int64(n), time.Hour*36, logger)
+
+		l.increaseAndSetExpire(ctx, cachekey.GetTotalQuotaHourKey(t), int64(n), time.Minute*90, logger)
+		l.increaseAndSetExpire(ctx, cachekey.GetTotalQuotaDayKey(t), int64(n), time.Hour*36, logger)
 	}
 
 	if res == NotExist {
@@ -121,4 +114,16 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 	}
 
 	return nil
+}
+
+func (l *RateLimiter) increaseAndSetExpire(ctx context.Context, key string, value int64, expireTime time.Duration, logger *zap.Logger) {
+	result, err := l.rdb.IncrBy(ctx, key, value).Result()
+	if err != nil {
+		logger.Error("failed to save key:", zap.Any(key, err))
+	}
+	if result == value && expireTime > 0 {
+		if err != l.rdb.Expire(ctx, key, expireTime).Err() {
+			logger.Error("failed to save key expire:", zap.Any(key, err))
+		}
+	}
 }
