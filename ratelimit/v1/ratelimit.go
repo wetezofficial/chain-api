@@ -173,6 +173,7 @@ func (l *RateLimiter) increaseAndSetExpire(ctx context.Context, key string, valu
 	result, err := l.rdb.IncrBy(ctx, key, value).Result()
 	if err != nil {
 		logger.Error("failed to save key:", zap.Any(key, err))
+		return
 	}
 	if result == value && expireTime > 0 {
 		if err != l.rdb.Expire(ctx, key, expireTime).Err() {
