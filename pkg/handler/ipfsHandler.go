@@ -3,20 +3,22 @@ package handler
 import (
 	"context"
 	"fmt"
-	files "github.com/ipfs/go-ipfs-files"
-	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
+	"time"
+
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/request"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
 	"starnet/starnet/models"
-	"strings"
-	"time"
+
+	files "github.com/ipfs/go-ipfs-files"
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type IPFSHandler struct {
@@ -53,7 +55,7 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 		return c.JSON(http.StatusOK, rlErr)
 	}
 
-	var params = request.AddParam{}
+	params := request.AddParam{}
 	if err := c.Bind(&params); err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
@@ -260,6 +262,11 @@ func (h *IPFSHandler) Pin(c echo.Context) error {
 		return c.JSON(http.StatusOK, rlErr)
 	}
 
+	params := request.PinParam{}
+	if err := c.Bind(&params); err != nil {
+		return c.JSON(http.StatusBadRequest, err)
+	}
+
 	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
 	defer cancelFunc()
 
@@ -269,7 +276,7 @@ func (h *IPFSHandler) Pin(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	err = h.ipfsService.Pin(ctx, cid)
+	err = h.ipfsService.Pin(ctx, cid, params)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}

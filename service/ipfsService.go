@@ -109,7 +109,7 @@ SAVED:
 	return results, nil
 }
 
-func (s *IpfsService) Pin(ctx context.Context, cidStr string) error {
+func (s *IpfsService) Pin(ctx context.Context, cidStr string, apiParam request.PinParam) error {
 	cid, err := api.DecodeCid(cidStr)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (s *IpfsService) UpdateUserTotalSave(ctx context.Context,apiKey string, fil
 	return s.ipfsDao.UpdateUserTotalSave(s.getUserIDByAPIKey(ctx, apiKey), fileSize)
 }
 
-func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string) error {
+func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string, apiParam request.PinParam,) error {
 	_, err := s.getUserFile(ctx, apiKey, cidStr)
 	if err != nil {
 		return err
@@ -139,10 +139,11 @@ func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.client.Unpin(ctx, cid)
+	result, err := s.client.Unpin(ctx, cid)
 	if err != nil {
 		return err
 	}
+	fmt.Println(result.Cid.String())
 	return nil
 }
 
