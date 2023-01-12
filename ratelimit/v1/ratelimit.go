@@ -150,18 +150,21 @@ func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey s
 	return nil
 }
 
-
 func (l *RateLimiter) increaseUserUpBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
+	logger.Info("save the increaseUserUpBandwidth used:", zap.Any("fileSize", fileSize))
+
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourUpKey(apiKey, chainID), fileSize, time.Minute*90, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	_, _ = l.ipfsSrv.UpdateUserTotalSave(ctx, apiKey, fileSize)
 
-	// TODO: refactor total get from ipfsUserInfo
+	// TODO:rule  refactor total get from ipfsUserInfo
 	return nil
 }
 
 func (l *RateLimiter) increaseUserDownBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
+	logger.Info("save the increaseUserDownBandwidth used:", zap.Any("fileSize", fileSize))
+
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourDownKey(apiKey, chainID), fileSize, time.Minute*90, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)

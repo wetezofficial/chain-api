@@ -1,13 +1,14 @@
 package app
 
 import (
+	"starnet/chain-api/config"
+	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+	serviceInterface "starnet/chain-api/service/interface"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-	"starnet/chain-api/config"
-	ratelimitv1 "starnet/chain-api/ratelimit/v1"
-	serviceInterface "starnet/chain-api/service/interface"
 )
 
 // App 所有的依赖信息都在这里

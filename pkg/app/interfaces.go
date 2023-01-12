@@ -16,7 +16,5 @@ type WsHandler interface {
 type IPFSHandler interface {
 	Add(ctx echo.Context) error
 	List(ctx echo.Context) error
-	Get(ctx echo.Context) error
-	Pin(ctx echo.Context) error
 	Proxy(ctx echo.Context) error
 }

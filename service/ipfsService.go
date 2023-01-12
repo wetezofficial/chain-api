@@ -2,149 +2,73 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"io"
-
+	"github.com/spf13/cast"
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
+
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/portal-api/app/cachekey"
 	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/models"
 
-	"github.com/ipfs-cluster/ipfs-cluster/api"
 	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
 	shell "github.com/ipfs/go-ipfs-api"
-	files "github.com/ipfs/go-ipfs-files"
 )
 
 var _ serviceInterface.IpfsService = &IpfsService{}
 
 // NewIpfsService .
 func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, client client.Client) *IpfsService {
+	allowMethod := []string{
+		"/add",
+		"/block/get",
+		"/block/put",
+		"/block/stat",
+		"/cat",
+		"/dag/get",
+		"/dag/put",
+		"/dag/resolve",
+		"/get",
+		"/pin/add",
+		"/pin/ls",
+		"/pin/rm",
+		"/pin/update",
+		"/version",
+	}
 	return &IpfsService{
-		ipfsDao:   ipfsDao,
-		userDao:   userDao,
-		cache:     cache,
-		client:    client,
-		ipfsShell: client.IPFS(context.Background()),
+		ipfsDao:     ipfsDao,
+		userDao:     userDao,
+		cache:       cache,
+		client:      client,
+		ipfsShell:   client.IPFS(context.Background()),
+		allowMethod: allowMethod,
 	}
 }
 
 // IpfsService .
 type IpfsService struct {
-	ipfsDao   daoInterface.IPFSDao
-	userDao   daoInterface.UserDao
-	cache     cache.Cache
-	client    client.Client
-	ipfsShell *shell.Shell
+	ipfsDao     daoInterface.IPFSDao
+	userDao     daoInterface.UserDao
+	cache       cache.Cache
+	client      client.Client
+	ipfsShell   *shell.Shell
+	allowMethod []string
 }
 
-// Add file or directory to ipfs cluster
-func (s *IpfsService) Add(ctx context.Context, apiKey string, apiParam request.AddParam, multiFileR *files.MultiFileReader) ([]response.AddResp, error) {
-	out := make(chan api.AddedOutput)
-	e := make(chan error)
-	userID := s.getUserIDByAPIKey(ctx, apiKey)
-	go func() {
-		param := api.AddParams{
-			Recursive: apiParam.Recursive,
-			Hidden:    apiParam.Hidden,
-			Wrap:      apiParam.WrapWithDirectory,
-			NoPin:     !apiParam.Pin,
-			IPFSAddParams: api.IPFSAddParams{
-				Chunker:    apiParam.Chunker,
-				Progress:   apiParam.Progress,
-				CidVersion: apiParam.CidVersion,
-				NoCopy:     apiParam.Nocopy,
-			},
-		}
-		e <- s.client.AddMultiFile(ctx, multiFileR, param, out)
-	}()
-	var dirHash string
-	var results []response.AddResp
-	var dbFiles []*models.IPFSFile
-	pinStatus := models.PinStatusUnPin
-	if apiParam.Pin {
-		pinStatus = models.PinStatusPin
-	}
-	for {
-		select {
-		case err := <-e:
-			if err != nil {
-				return nil, err
-			}
-			goto SAVED
-		case result := <-out:
-			if result.Cid.String() != "b" {
-				hash := result.Cid.String()
-				if result.Name == "" {
-					dirHash = hash
-				}
-				results = append(results, response.AddResp{
-					Name: result.Name,
-					Hash: hash,
-					Size: result.Size,
-				})
-				dbFiles = append(dbFiles, &models.IPFSFile{
-					PinStatus: pinStatus,
-					UserId:    userID,
-					FileSize:  result.Size,
-					FileName:  result.Name,
-					CID:       hash,
-				})
-			}
-		}
-	}
-SAVED:
-	if dirHash != "" {
-		for k := range dbFiles {
-			dbFiles[k].WrapWithDirCid = dirHash
-			dbFiles[k].WrapDirName = apiParam.WrapDirName
-		}
-	}
-	if err := s.ipfsDao.BatchSaveFiles(dbFiles); err != nil {
-		return nil, err
-	}
-	return results, nil
-}
-
-func (s *IpfsService) Pin(ctx context.Context, cidStr string, apiParam request.PinParam) error {
-	cid, err := api.DecodeCid(cidStr)
-	if err != nil {
-		return err
-	}
-	result, err := s.client.Pin(ctx, cid, api.PinOptions{})
-	if err != nil {
-		return err
-	}
-	fmt.Println(result.Cid.String())
-	return nil
-}
-
-func (s *IpfsService) GetObject(cidStr string) (io.ReadCloser, error) {
-	return s.ipfsShell.Cat(cidStr)
-}
-
-func (s *IpfsService) UpdateUserTotalSave(ctx context.Context,apiKey string, fileSize int64) (int64, error) {
-	return s.ipfsDao.UpdateUserTotalSave(s.getUserIDByAPIKey(ctx, apiKey), fileSize)
-}
-
-func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string, apiParam request.PinParam,) error {
-	_, err := s.getUserFile(ctx, apiKey, cidStr)
-	if err != nil {
-		return err
-	}
-	cid, err := api.DecodeCid(cidStr)
-	if err != nil {
-		return err
-	}
-	result, err := s.client.Unpin(ctx, cid)
-	if err != nil {
-		return err
-	}
-	fmt.Println(result.Cid.String())
-	return nil
+func (s *IpfsService) CheckUserCid(ctx context.Context, apiKey, cid string) bool {
+	var result bool
+	_ = s.cache.CacheFn(ctx,
+		cachekey.CheckUserCID(apiKey, cid),
+		&result,
+		func() error {
+			file := new(models.IPFSFile)
+			_ = s.ipfsDao.GetUserFile(s.getUserIDByAPIKey(ctx, apiKey), cid, file)
+			result = file.ID > 0
+			return nil
+		},
+	)
+	return result
 }
 
 func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error {
@@ -155,6 +79,53 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 			return s.ipfsDao.ListUserFile(s.getUserIDByAPIKey(ctx, apiKey), files)
 		},
 	)
+}
+
+// Add file info to the database
+func (s *IpfsService) Add(ctx context.Context, apiKey string, pinStatus uint8, fileList []response.AddResp) error {
+	userID := s.getUserIDByAPIKey(ctx, apiKey)
+	var dbFiles []*models.IPFSFile
+	for _, v := range fileList {
+		dbFiles = append(dbFiles, &models.IPFSFile{
+			PinStatus: pinStatus,
+			UserId:    userID,
+			FileSize:  cast.ToUint64(v.Size),
+			FileName:  v.Name,
+			CID:       v.Hash,
+		})
+	}
+	return s.ipfsDao.BatchSaveFiles(dbFiles)
+}
+
+func (s *IpfsService) Pin(ctx context.Context, cidStr string, apiParam request.PinParam) error {
+	//stat, err := s.ipfsShell.FilesStat(ctx, fileList[len(fileList)-1].Hash)
+	//if err != nil {
+	//	return err
+	//}
+	//if stat.Type == "directory" {
+	//	dbFiles[len(dbFiles)-1].WrapWithDirCid = fileList[len(fileList)-1].Hash
+	//	dbFiles[len(dbFiles)-1].WrapDirName = fileList[len(fileList)-1].Name
+	//	list, err := s.ipfsShell.List(fileList[len(fileList)-1].Hash)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	for _, v := range list {
+	//		if v.Type == 1 {
+	//			dbFiles[len(dbFiles)-1].WrapDirName = v.Name
+	//			break
+	//		}
+	//	}
+	//}
+	return nil
+}
+
+func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string) error {
+	_, err := s.getUserFile(ctx, apiKey, cidStr)
+	if err != nil {
+		return err
+	}
+	// TODO: save to db
+	return nil
 }
 
 func (s *IpfsService) getUserFile(ctx context.Context, apiKey, cid string) (*models.IPFSFile, error) {

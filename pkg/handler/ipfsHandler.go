@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"fmt"
-	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -45,15 +44,15 @@ func (h *IPFSHandler) newLogger(c echo.Context) *zap.Logger {
 func (h *IPFSHandler) Add(c echo.Context) error {
 	logger := h.newLogger(c)
 
-	apiKey, err := h.JsonHandler.bindApiKey(c)
+	apiKey, err := h.bindApiKey(c)
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusOK, rlErr)
-	}
+	//if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+	//	return c.JSON(http.StatusOK, rlErr)
+	//}
 
 	params := request.AddParam{}
 	if err := c.Bind(&params); err != nil {
@@ -72,14 +71,17 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 	var dataSize int64
 	for _, f := range requestFiles {
 		if strings.Contains(f.Filename, "/") {
-			rootDir = "root"
+			rootDir = strings.Split(f.Filename, "/")[0]
 		}
 		dataSize += f.Size
+	}
+	if params.WrapWithDirectory && rootDir == "" {
+		rootDir = "root"
 	}
 
 	fs := make(map[string]files.Node)
 	fileMap := make(map[string]*multipart.FileHeader)
-	if rootDir != "" && params.WrapWithDirectory {
+	if rootDir != "" {
 		for _, f := range requestFiles {
 			fileMap[rootDir+"-"+f.Filename] = f
 		}
@@ -111,7 +113,7 @@ func (h *IPFSHandler) Add(c echo.Context) error {
 
 	sf := files.NewMapDirectory(fs)
 
-	results, err := h.ipfsService.Add(c.Request().Context(), apiKey, params, files.NewMultiFileReader(sf, true))
+	results, err := h.ipfsService.AddCluster(c.Request().Context(), apiKey, params, files.NewMultiFileReader(sf, true))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
@@ -212,139 +214,4 @@ func (h *IPFSHandler) List(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 	return c.JSON(http.StatusOK, fileList)
-}
-
-func (h *IPFSHandler) Get(c echo.Context) error {
-	logger := h.newLogger(c)
-
-	apiKey, err := h.JsonHandler.bindApiKey(c)
-	if err != nil {
-		return err
-	}
-
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusBadRequest, rlErr)
-	}
-
-	var cid string
-	err = echo.PathParamsBinder(c).String("cid", &cid).BindError()
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	object, err := h.ipfsService.GetObject(cid)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-	data, err := io.ReadAll(object)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	// bandwidth use check
-	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(data)), ratelimitv1.BandWidthDownload); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-	return c.JSONBlob(http.StatusOK, data)
-}
-
-func (h *IPFSHandler) Pin(c echo.Context) error {
-	logger := h.newLogger(c)
-
-	apiKey, err := h.JsonHandler.bindApiKey(c)
-	if err != nil {
-		return err
-	}
-
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusOK, rlErr)
-	}
-
-	params := request.PinParam{}
-	if err := c.Bind(&params); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
-	defer cancelFunc()
-
-	var cid string
-	err = echo.PathParamsBinder(c).String("cid", &cid).BindError()
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	err = h.ipfsService.Pin(ctx, cid, params)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	return c.JSON(http.StatusOK, nil)
-}
-
-func (h *IPFSHandler) Proxy(c echo.Context) error {
-	logger := h.newLogger(c)
-
-	apiKey, err := h.JsonHandler.bindApiKey(c)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusBadRequest, rlErr)
-	}
-
-	w := c.Response().Writer
-	r := c.Request()
-
-	// Create a new HTTP client
-	client := &http.Client{}
-
-	// Create a new request to the target URL TODO: request base url
-	targetReq, err := http.NewRequest(r.Method, "http://127.0.0.1:9095"+r.URL.Path, r.Body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	// Copy the request headers to the new request
-	targetReq.Header = r.Header
-
-	// Forward the request to the target URL
-	targetResp, err := client.Do(targetReq)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Error("close the targetResp err:", zap.Error(err))
-		}
-	}(targetResp.Body)
-
-	// Copy the response headers to the original response
-	for k, v := range targetResp.Header {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(targetResp.StatusCode)
-
-	// Copy the response body to the original response
-	// TODO: read the data from the body
-	body, err := io.ReadAll(targetResp.Body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-	_, err = w.Write(body)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
-	}
-
-	// bandwidth use check
-	// TODO: r.URL.Path -> BandWidthType
-	//if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, int64(len(body))); err != nil {
-	//	return c.JSON(http.StatusBadRequest, err)
-	//}
-	return nil
 }
