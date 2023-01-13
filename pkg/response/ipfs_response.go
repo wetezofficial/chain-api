@@ -5,3 +5,12 @@ type AddResp struct {
 	Hash string `json:"Hash"`
 	Size string `json:"Size"`
 }
+
+type PinResp struct {
+	Cid  string `json:"Cid"`
+	Type string `json:"Type"`
+}
+
+type PinListMapResult struct {
+	Keys map[string]PinResp `json:"Keys"`
+}

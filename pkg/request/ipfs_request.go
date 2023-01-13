@@ -25,5 +25,19 @@ type AddParam struct {
 }
 
 type PinParam struct {
-	Recursive bool `json:"recursive"  form:"recursive"`
+	Recursive bool   `json:"recursive"  form:"recursive"`
+	Progress  bool   `json:"progress"  form:"progress"`
+	Arg       string `json:"arg" form:"arg"`
+}
+
+type PinLsParam struct {
+	Stream bool   `json:"stream"  form:"stream"`
+	Quiet  bool   `json:"quiet"  form:"quiet"`
+	Type   string `json:"type"  form:"type"` //  The type of pinned keys to list. Can be "direct", "indirect", "recursive", or "all". Default: all. Required: no.
+	Arg    string `json:"arg" form:"arg"`
+}
+
+type UpdatePinParam struct {
+	Unpin bool     `json:"unpin"  form:"unpin"`
+	Arg   []string `json:"arg" form:"arg"`
 }

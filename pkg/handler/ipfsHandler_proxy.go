@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"starnet/chain-api/pkg/response"
 	"strings"
+
+	"starnet/chain-api/pkg/response"
 
 	"starnet/chain-api/pkg/request"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
@@ -47,8 +48,34 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		// return c.JSON(http.StatusBadRequest, fmt.Errorf("not supported method"))
 	}
 
+	switch pathStr {
+	// TODO: const the error
+	case "/pin/add", "/pin/rm":
+		pinParam := new(request.PinParam)
+		if err := c.Bind(pinParam); err != nil {
+			errMsg := "read the add param failed"
+			logger.Error(errMsg, zap.Error(err))
+			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+		}
+		if !h.ipfsService.CheckUserCid(ctx, apiKey, pinParam.Arg) {
+			return c.JSON(http.StatusBadRequest, fmt.Errorf("can`t operation this objects"))
+		}
+	case "/pin/update":
+		updatePinParam := new(request.UpdatePinParam)
+		if err := c.Bind(updatePinParam); err != nil {
+			errMsg := "read the update param failed"
+			logger.Error(errMsg, zap.Error(err))
+			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+		}
+		for _, arg := range updatePinParam.Arg {
+			if !h.ipfsService.CheckUserCid(ctx, apiKey, arg) {
+				return c.JSON(http.StatusBadRequest, fmt.Errorf("can`t operation this objects"))
+			}
+		}
+	}
+
 	// Create a new HTTP client
-	// TODO: remove query value
+	// TODO: maybe need remove same query value
 	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
 
 	// Create a new request to the target URL
@@ -83,7 +110,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	w.WriteHeader(targetResp.StatusCode)
 
 	// Copy the response body to the original response
-	// TODO: read the data from the body
 	body, err := io.ReadAll(targetResp.Body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)
@@ -98,7 +124,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 
 	switch pathStr {
 	case "/add":
-		// TODO: if pin is true, call service
 		addParam := new(request.AddParam)
 		if err := c.Bind(addParam); err != nil {
 			logger.Error("read the add param failed", zap.Error(err))
@@ -115,15 +140,16 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 				}
 				if err = json.Unmarshal([]byte(v+"}"), &addResult); err != nil {
 					logger.Error("unmarshal the add result failed", zap.Error(err))
+					continue
 				}
 				addResultList = append(addResultList, addResult)
 			}
-			logger.Info("the add results is:", zap.Any("addResultList", addResultList))
 		} else {
 			addResultList = append(addResultList, addResult)
-			logger.Info("the add result is:", zap.Any("addResult", addResult))
 		}
-		//cast.ToSlice(body)
+		if err = h.ipfsService.Add(ctx, apiKey, addResultList); err != nil {
+			logger.Error("save upload file to database failed", zap.Error(err))
+		}
 	case "/block/get":
 	case "/block/put":
 		bwSize, bwType = getBwUploadParam(c, logger)
@@ -138,17 +164,41 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	case "/get":
 		bwSize = int64(len(body))
 		bwType = ratelimitv1.BandWidthDownload
-	case "/pin/add":
-		// TODO: call service
-		if err := h.ipfsService.Pin(ctx, c.QueryParam("arg"), request.PinParam{}); err != nil {
-			logger.Error("pin add failed", zap.Error(err))
-		}
 	case "/pin/ls":
 		// TODO: call service
-	case "/pin/rm":
-	// TODO: call service
+		// TODO: query the record form database
+		lsParam := new(request.PinLsParam)
+		if err := c.Bind(lsParam); err != nil {
+			errMsg := "read the pin ls param failed"
+			logger.Error(errMsg, zap.Error(err))
+			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+		}
 
-	case "/pin/update":
+		var pinResultList []response.PinResp
+		var mapResult response.PinListMapResult
+		if err = json.Unmarshal(body, &mapResult); err != nil {
+			list := strings.Split(string(body), "}")
+			for _, v := range list {
+				if len(v) < 5 {
+					continue
+				}
+				var item response.PinResp
+				if err = json.Unmarshal([]byte(v+"}"), &item); err != nil {
+					logger.Error("unmarshal the pin result failed", zap.Error(err))
+					continue
+				}
+				pinResultList = append(pinResultList, item)
+			}
+		} else {
+			for k, v := range mapResult.Keys {
+				pinResultList = append(pinResultList, response.PinResp{
+					Cid:  k,
+					Type: v.Type,
+				})
+			}
+		}
+		logger.Info("the pin results is:", zap.Any("pinResultList", pinResultList))
+
 	case "/version":
 	}
 

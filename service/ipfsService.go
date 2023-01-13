@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"github.com/spf13/cast"
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
+
+	"github.com/spf13/cast"
 
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/portal-api/app/cachekey"
@@ -82,12 +83,11 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 }
 
 // Add file info to the database
-func (s *IpfsService) Add(ctx context.Context, apiKey string, pinStatus uint8, fileList []response.AddResp) error {
+func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []response.AddResp) error {
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
 	var dbFiles []*models.IPFSFile
 	for _, v := range fileList {
 		dbFiles = append(dbFiles, &models.IPFSFile{
-			PinStatus: pinStatus,
 			UserId:    userID,
 			FileSize:  cast.ToUint64(v.Size),
 			FileName:  v.Name,

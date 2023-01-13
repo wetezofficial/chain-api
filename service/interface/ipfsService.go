@@ -11,6 +11,7 @@ import (
 )
 
 type IpfsService interface {
+	Add(ctx context.Context, apiKey string, fileList []response.AddResp) error
 	AddCluster(ctx context.Context, apiKey string, apiParam request.AddParam, multiFileR *files.MultiFileReader) ([]response.AddResp, error)
 	GetObject(cidStr string) (io.ReadCloser, error)
 	Pin(ctx context.Context, cidStr string, apiParam request.PinParam) error
@@ -18,4 +19,5 @@ type IpfsService interface {
 	ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error
 	UpdateUserTotalSave(ctx context.Context, apiKey string, fileSize int64) (int64, error)
 	CheckMethod(pathStr string) bool
+	CheckUserCid(ctx context.Context, apiKey, cid string) bool
 }
