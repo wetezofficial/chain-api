@@ -12,7 +12,6 @@ import (
 func NewRouter(app *app.App) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
-	e.Debug = true
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
@@ -71,7 +70,6 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
-	//e.POST("/ipfs/v0/:apiKey/add", app.IPFSHandler.Add)
 	e.Any("/ipfs/v0/:apiKey/*", app.IPFSHandler.Proxy)
 
 	return e

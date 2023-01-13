@@ -33,10 +33,10 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	// if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-	// 	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-	// 	return c.JSON(http.StatusBadRequest, rlErr)
-	// }
+	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+		return c.JSON(http.StatusBadRequest, rlErr)
+	}
 
 	ctx := c.Request().Context()
 	w := c.Response().Writer
@@ -44,12 +44,24 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
 
 	if !h.ipfsService.CheckMethod(pathStr) {
-		// FIXME:
-		// return c.JSON(http.StatusBadRequest, fmt.Errorf("not supported method"))
+		return c.JSON(http.StatusBadRequest, fmt.Errorf("not supported method"))
 	}
 
 	switch pathStr {
 	// TODO: const the error
+	// FIXME: Query parameters (only for GET/DELETE methods)
+	case "/pin/ls":
+		var lsParam request.PinLsParam
+		if err := c.Bind(&lsParam); err != nil {
+			errMsg := "read the pin ls param failed"
+			logger.Error(errMsg, zap.Error(err))
+			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+		}
+		if lsParam.Arg == "" {
+			return c.JSON(http.StatusOK, response.PinListMapResult{
+				Keys: map[string]response.PinResp{},
+			})
+		}
 	case "/pin/add", "/pin/rm":
 		pinParam := new(request.PinParam)
 		if err := c.Bind(pinParam); err != nil {
@@ -75,7 +87,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	// Create a new HTTP client
-	// TODO: maybe need remove same query value
+	// TODO: maybe need remove same query param value
 	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
 
 	// Create a new request to the target URL
@@ -150,56 +162,11 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		if err = h.ipfsService.Add(ctx, apiKey, addResultList); err != nil {
 			logger.Error("save upload file to database failed", zap.Error(err))
 		}
-	case "/block/get":
-	case "/block/put":
-		bwSize, bwType = getBwUploadParam(c, logger)
-	case "/block/stat":
-	case "/cat":
+	case "/dag/get", "/get", "/cat", "/block/get":
 		bwSize = int64(len(body))
 		bwType = ratelimitv1.BandWidthDownload
-	case "/dag/get":
-	case "/dag/put":
+	case "/dag/put", "/block/put":
 		bwSize, bwType = getBwUploadParam(c, logger)
-	case "/dag/resolve":
-	case "/get":
-		bwSize = int64(len(body))
-		bwType = ratelimitv1.BandWidthDownload
-	case "/pin/ls":
-		// TODO: call service
-		// TODO: query the record form database
-		lsParam := new(request.PinLsParam)
-		if err := c.Bind(lsParam); err != nil {
-			errMsg := "read the pin ls param failed"
-			logger.Error(errMsg, zap.Error(err))
-			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
-		}
-
-		var pinResultList []response.PinResp
-		var mapResult response.PinListMapResult
-		if err = json.Unmarshal(body, &mapResult); err != nil {
-			list := strings.Split(string(body), "}")
-			for _, v := range list {
-				if len(v) < 5 {
-					continue
-				}
-				var item response.PinResp
-				if err = json.Unmarshal([]byte(v+"}"), &item); err != nil {
-					logger.Error("unmarshal the pin result failed", zap.Error(err))
-					continue
-				}
-				pinResultList = append(pinResultList, item)
-			}
-		} else {
-			for k, v := range mapResult.Keys {
-				pinResultList = append(pinResultList, response.PinResp{
-					Cid:  k,
-					Type: v.Type,
-				})
-			}
-		}
-		logger.Info("the pin results is:", zap.Any("pinResultList", pinResultList))
-
-	case "/version":
 	}
 
 	if bwType > 0 {
