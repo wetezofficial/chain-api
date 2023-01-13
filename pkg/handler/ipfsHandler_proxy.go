@@ -52,7 +52,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	// FIXME: Query parameters (only for GET/DELETE methods)
 	case "/pin/ls":
 		var lsParam request.PinLsParam
-		if err := c.Bind(&lsParam); err != nil {
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
 			errMsg := "read the pin ls param failed"
 			logger.Error(errMsg, zap.Error(err))
 			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
@@ -64,7 +64,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	case "/pin/add", "/pin/rm":
 		pinParam := new(request.PinParam)
-		if err := c.Bind(pinParam); err != nil {
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, pinParam); err != nil {
 			errMsg := "read the add param failed"
 			logger.Error(errMsg, zap.Error(err))
 			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
@@ -74,7 +74,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	case "/pin/update":
 		updatePinParam := new(request.UpdatePinParam)
-		if err := c.Bind(updatePinParam); err != nil {
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, updatePinParam); err != nil {
 			errMsg := "read the update param failed"
 			logger.Error(errMsg, zap.Error(err))
 			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
@@ -137,7 +137,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	switch pathStr {
 	case "/add":
 		addParam := new(request.AddParam)
-		if err := c.Bind(addParam); err != nil {
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, addParam); err != nil {
 			logger.Error("read the add param failed", zap.Error(err))
 		}
 		bwSize, bwType = getBwUploadParam(c, logger)
