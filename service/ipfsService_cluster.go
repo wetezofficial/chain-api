@@ -96,7 +96,3 @@ SAVED:
 func (s *IpfsService) GetObject(cidStr string) (io.ReadCloser, error) {
 	return s.ipfsShell.Cat(cidStr)
 }
-
-func (s *IpfsService) UpdateUserTotalSave(ctx context.Context, apiKey string, fileSize int64) (int64, error) {
-	return s.ipfsDao.UpdateUserTotalSave(s.getUserIDByAPIKey(ctx, apiKey), fileSize)
-}

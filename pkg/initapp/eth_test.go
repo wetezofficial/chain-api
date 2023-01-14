@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"starnet/starnet/models"
 	"strings"
 	"testing"
 	"time"
@@ -275,7 +276,7 @@ func (s *ethRpcSuite) SetupSuite() {
 	var rateLimitDao daoInterface.RateLimitDao = dao.NewRateLimitDao(rdb)
 	s.rateLimitDao = rateLimitDao
 
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, []string{whitelistApikey})
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, nil, logger, []string{whitelistApikey})
 	assert.Nil(s.T(), err, "fail to get rate limiter")
 
 	_app := app.App{
@@ -323,7 +324,15 @@ FnBegin:
 	assert.Nil(s.T(), err)
 
 	// Initialize configuration
-	err = s.rateLimitDao.SetQuota(apikey, chainID, secQuota, dayQuota)
+	testPlan := models.Plan{
+		DayLimit:     uint32(dayQuota),
+		TotalStorage: 1000000,
+		TransferUp:   1000000,
+		TransferDown: 1000000,
+		SecondLimit:  uint16(secQuota),
+		ChainID:      uint8(chainID),
+	}
+	err = s.rateLimitDao.SetQuota(apikey, chainID, testPlan)
 	assert.Nil(s.T(), err)
 
 	_, err = s.rateLimitDao.GetDayUsage(apikey, chainID, t)

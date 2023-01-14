@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"starnet/chain-api/pkg/request"
+
 	"starnet/chain-api/pkg/response"
 
 	"github.com/spf13/cast"
@@ -82,50 +82,60 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 	)
 }
 
+func (s *IpfsService) GetIPFSUser(ctx context.Context, apiKey string, files *[]models.IPFSUser) error {
+	return s.cache.CacheFn(ctx,
+		cachekey.UserIPFSFiles(apiKey),
+		files,
+		func() error {
+			return s.ipfsDao.ListUserFile(s.getUserIDByAPIKey(ctx, apiKey), files)
+		},
+	)
+}
+
 // Add file info to the database
 func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []response.AddResp) error {
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
 	var dbFiles []*models.IPFSFile
 	for _, v := range fileList {
 		dbFiles = append(dbFiles, &models.IPFSFile{
-			UserId:    userID,
-			FileSize:  cast.ToUint64(v.Size),
-			FileName:  v.Name,
-			CID:       v.Hash,
+			UserId:   userID,
+			FileSize: cast.ToUint64(v.Size),
+			FileName: v.Name,
+			CID:      v.Hash,
 		})
+	}
+	var addStorage uint64
+	for _, v := range dbFiles {
+		count, _ := s.ipfsDao.CountUserFile(userID, v.CID)
+		if count == 1 {
+			addStorage += v.FileSize
+		}
+	}
+	if addStorage > 0 {
+		// newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
+		_, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
+		if err == nil {
+			// TODO: update redis
+			// s.cache.Set(ctx, cachekey.APIKeyUserID(apiKey string), data interface{})
+		}
 	}
 	return s.ipfsDao.BatchSaveFiles(dbFiles)
 }
 
-func (s *IpfsService) Pin(ctx context.Context, cidStr string, apiParam request.PinParam) error {
-	//stat, err := s.ipfsShell.FilesStat(ctx, fileList[len(fileList)-1].Hash)
-	//if err != nil {
-	//	return err
-	//}
-	//if stat.Type == "directory" {
-	//	dbFiles[len(dbFiles)-1].WrapWithDirCid = fileList[len(fileList)-1].Hash
-	//	dbFiles[len(dbFiles)-1].WrapDirName = fileList[len(fileList)-1].Name
-	//	list, err := s.ipfsShell.List(fileList[len(fileList)-1].Hash)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	for _, v := range list {
-	//		if v.Type == 1 {
-	//			dbFiles[len(dbFiles)-1].WrapDirName = v.Name
-	//			break
-	//		}
-	//	}
-	//}
-	return nil
-}
-
-func (s *IpfsService) UnPin(ctx context.Context, apiKey, cidStr string) error {
-	_, err := s.getUserFile(ctx, apiKey, cidStr)
-	if err != nil {
-		return err
+func (s *IpfsService) GetIpfsUser(ctx context.Context, apiKey string) (*models.IPFSUser, error) {
+	// TODO: update after add & BandwidthHook ？
+	user := new(models.IPFSUser)
+	if err := s.cache.CacheFn(ctx,
+		cachekey.UserIPFSFiles(apiKey),
+		user,
+		func() error {
+			return nil
+			// return s.ipfsDao.GetUserFile(s.getUserIDByAPIKey(ctx, apiKey), "cid", user)
+		},
+	); err != nil {
+		return nil, err
 	}
-	// TODO: save to db
-	return nil
+	return user, nil
 }
 
 func (s *IpfsService) getUserFile(ctx context.Context, apiKey, cid string) (*models.IPFSFile, error) {

@@ -8,8 +8,10 @@ import (
 
 	"starnet/chain-api/service"
 	"starnet/starnet/cachekey"
+	"starnet/starnet/models"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/spf13/cast"
 
 	"go.uber.org/zap"
 )
@@ -137,11 +139,12 @@ func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey s
 
 	t := time.Now()
 
-	// TODO: the limit rule check
 	switch bwType {
 	case BandWidthUpload:
+		// TODO: check upload & totalSaveLimit
 		_ = l.increaseUserUpBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
 	case BandWidthDownload:
+		// TODO: check download & totalSaveLimit
 		_ = l.increaseUserDownBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
 	default:
 		return errors.New("unsupported type")
@@ -150,11 +153,50 @@ func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey s
 	return nil
 }
 
+func (l *RateLimiter) CheckIpfsStorageAndUpAuth() bool {
+	l.ipfsSrv.ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile)(ctx context.Context, apiKey string, apiParam request.AddParam, multiFileR *files.MultiFileReader)
+}
+
+func (l *RateLimiter) CheckIPFSLimit(ctx context.Context, apiKey string, chainID uint8, logger *zap.Logger) error {
+	var err error
+
+	authRecord, err := l.rdb.HGetAll(ctx, cachekey.GetUserAccessAuth(apiKey, chainID)).Result()
+	if err != nil {
+		if models.IsNotFound(err) {
+			if err = l.rdb.HSet(context.TODO(), cachekey.GetUserAccessAuth(apiKey, chainID), cachekey.IpfsLimitStorageSetKey(), true).Err(); err != nil {
+				logger.Error("set user auth failed", zap.Error(err))
+			}
+			if err = l.rdb.HSet(context.TODO(), cachekey.GetUserAccessAuth(apiKey, chainID), cachekey.IpfsLimitTransferUpSetKey(), true).Err(); err != nil {
+				logger.Error("set user auth failed", zap.Error(err))
+			}
+			if err = l.rdb.HSet(context.TODO(), cachekey.GetUserAccessAuth(apiKey, chainID), cachekey.IpfsLimitTransferDownSetKey(), true).Err(); err != nil {
+				logger.Error("set user auth failed", zap.Error(err))
+			}
+			return nil
+		}
+		errorMsg := "can not read the user ipfs auth status"
+		logger.Error(errorMsg, zap.Error(err))
+		return fmt.Errorf(errorMsg)
+	}
+	for k, v := range authRecord {
+		if !cast.ToBool(v) {
+			return fmt.Errorf("out of %s limit", k)
+		}
+	}
+
+	return nil
+}
+
+func (l *RateLimiter) UpdateIPFSAuth(ctx context.Context, apiKey, setKey string, chainID uint8, status bool, logger *zap.Logger) {
+	if err := l.rdb.HSet(context.TODO(), cachekey.GetUserAccessAuth(apiKey, chainID), setKey, status).Err(); err != nil {
+		logger.Error("set user auth failed", zap.Error(err))
+	}
+}
+
 func (l *RateLimiter) increaseUserUpBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourUpKey(apiKey, chainID), fileSize, time.Minute*90, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
-	_, _ = l.ipfsSrv.UpdateUserTotalSave(ctx, apiKey, fileSize)
 
 	// TODO:rule  refactor total get from ipfsUserInfo
 	return nil
