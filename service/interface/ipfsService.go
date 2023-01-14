@@ -3,6 +3,7 @@ package serviceInterface
 import (
 	"context"
 	"io"
+
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	"starnet/starnet/models"
@@ -17,4 +18,6 @@ type IpfsService interface {
 	ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error
 	CheckMethod(pathStr string) bool
 	CheckUserCid(ctx context.Context, apiKey, cid string) bool
+	GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error)
+	UpdateIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, newVal interface{})
 }

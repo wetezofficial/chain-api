@@ -62,7 +62,7 @@ func NewApp(configFile string) *app.App {
 		log.Fatalln(err)
 	}
 
-	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, ipfsClient)
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, ipfsClient, logger)
 
 	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
 	if err != nil {

@@ -6,9 +6,13 @@ import (
 	"starnet/chain-api/pkg/response"
 
 	"github.com/spf13/cast"
+	"go.uber.org/zap"
 
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/portal-api/app/cachekey"
+	commonKey "starnet/starnet/cachekey"
+	"starnet/starnet/constant"
+
 	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/models"
@@ -20,7 +24,7 @@ import (
 var _ serviceInterface.IpfsService = &IpfsService{}
 
 // NewIpfsService .
-func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, client client.Client) *IpfsService {
+func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, client client.Client, logger *zap.Logger) *IpfsService {
 	allowMethod := []string{
 		"/add",
 		"/block/get",
@@ -44,6 +48,7 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, 
 		client:      client,
 		ipfsShell:   client.IPFS(context.Background()),
 		allowMethod: allowMethod,
+		logger:      logger,
 	}
 }
 
@@ -55,6 +60,7 @@ type IpfsService struct {
 	client      client.Client
 	ipfsShell   *shell.Shell
 	allowMethod []string
+	logger      *zap.Logger
 }
 
 func (s *IpfsService) CheckUserCid(ctx context.Context, apiKey, cid string) bool {
@@ -73,16 +79,6 @@ func (s *IpfsService) CheckUserCid(ctx context.Context, apiKey, cid string) bool
 }
 
 func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error {
-	return s.cache.CacheFn(ctx,
-		cachekey.UserIPFSFiles(apiKey),
-		files,
-		func() error {
-			return s.ipfsDao.ListUserFile(s.getUserIDByAPIKey(ctx, apiKey), files)
-		},
-	)
-}
-
-func (s *IpfsService) GetIPFSUser(ctx context.Context, apiKey string, files *[]models.IPFSUser) error {
 	return s.cache.CacheFn(ctx,
 		cachekey.UserIPFSFiles(apiKey),
 		files,
@@ -113,29 +109,31 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 	}
 	if addStorage > 0 {
 		// newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
-		_, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
+		newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
 		if err == nil {
-			// TODO: update redis
-			// s.cache.Set(ctx, cachekey.APIKeyUserID(apiKey string), data interface{})
+			s.UpdateIPFSUsage(
+				ctx, 
+				apiKey,
+				 commonKey.IpfsLimitStorageSetKey(), 
+				 constant.ChainIPFS.ChainID, 
+				 newValue,
+				)
 		}
 	}
 	return s.ipfsDao.BatchSaveFiles(dbFiles)
 }
 
-func (s *IpfsService) GetIpfsUser(ctx context.Context, apiKey string) (*models.IPFSUser, error) {
-	// TODO: update after add & BandwidthHook ？
-	user := new(models.IPFSUser)
-	if err := s.cache.CacheFn(ctx,
-		cachekey.UserIPFSFiles(apiKey),
-		user,
-		func() error {
-			return nil
-			// return s.ipfsDao.GetUserFile(s.getUserIDByAPIKey(ctx, apiKey), "cid", user)
-		},
-	); err != nil {
-		return nil, err
+func (s *IpfsService) UpdateIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, newVal interface{}) {
+	logger := s.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
+	if err := s.cache.HSet(context.TODO(), cachekey.GetUserIPFSUsageKeyMate(apiKey, chainID), setKey, newVal); err != nil {
+		logger.Error("set user auth usage failed", zap.Error(err))
 	}
-	return user, nil
+}
+
+// GetIpfsUserNoCache
+func (s *IpfsService) GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error) {
+	user := new(models.IPFSUser)
+	return user, s.ipfsDao.GetIPFSUser(s.getUserIDByAPIKey(ctx, apiKey), user)
 }
 
 func (s *IpfsService) getUserFile(ctx context.Context, apiKey, cid string) (*models.IPFSFile, error) {

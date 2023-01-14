@@ -21,6 +21,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
+	github.com/spf13/cast v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	github.com/urfave/cli/v2 v2.14.1
