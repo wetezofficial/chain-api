@@ -19,5 +19,5 @@ type IpfsService interface {
 	CheckMethod(pathStr string) bool
 	CheckUserCid(ctx context.Context, apiKey, cid string) bool
 	GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error)
-	UpdateIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, newVal interface{})
+	IncrIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, addVal int64)
 }

@@ -19,7 +19,14 @@ const (
 	BandWidthDownload = 2
 )
 
-func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey string, fileSize int64, bwType uint8) error {
+// BandwidthHook update the chain (ipfs) bandwidth periodic usage
+func (l *RateLimiter) BandwidthHook(
+	ctx context.Context,
+	chainID uint8,
+	apiKey string,
+	fileSize int64,
+	bwType uint8,
+) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 
 	if inWhitelist, err := l.allowWhitelist(ctx, chainID, apiKey, 1); err != nil {
@@ -42,28 +49,20 @@ func (l *RateLimiter) BandwidthHook(ctx context.Context, chainID uint8, apiKey s
 	return nil
 }
 
-// CheckIpfsStorageAndUpAuth check total storage and transfer up used
-// TODO:
-func (l *RateLimiter) CheckIpfsStorageAndUpAuth(fileSize int64) bool {
-	return false
-}
-
-// CheckIpfsDownAuth check transfer down used
-// TODO:
-func (l *RateLimiter) CheckIpfsDownAuth(fileSize int64) bool {
-	return false
-}
-
-// TODO: add bandwidth type & fileSize to checkThe CheckIpfsStorageAndUpAuth & CheckIpfsDownAuth
-func (l *RateLimiter) CheckIPFSLimit(ctx context.Context, apiKey string, chainID uint8, logger *zap.Logger) error {
-	var err error
-
+func (l *RateLimiter) CheckIPFSLimit(
+	ctx context.Context,
+	apiKey string,
+	chainID uint8,
+	logger *zap.Logger,
+	fileSize int64,
+	bwType uint8,
+) error {
 	usageRecord, err := l.rdb.HGetAll(ctx, cachekey.GetUserIPFSUsageKey(apiKey, chainID)).Result()
 	if err != nil {
 		if models.IsNotFound(err) {
 			userInfo, err := l.ipfsSrv.GetIpfsUserNoCache(ctx, apiKey)
 			if err != nil {
-				errMsg := "get ifpsUser form db failed"
+				errMsg := "get ipfs User form db failed"
 				e := fmt.Errorf(errMsg)
 				logger.Error(errMsg, zap.Error(e))
 				return e
@@ -108,6 +107,14 @@ func (l *RateLimiter) CheckIPFSLimit(ctx context.Context, apiKey string, chainID
 	}
 
 	for k, v := range usageRecord {
+		usage := cast.ToUint64(v)
+		if (k == cachekey.IpfsLimitStorageSetKey() || k == cachekey.IpfsLimitTransferUpSetKey()) &&
+			bwType == BandWidthUpload {
+			usage += uint64(fileSize)
+		}
+		if k == cachekey.IpfsLimitTransferDownSetKey() && bwType == BandWidthDownload {
+			usage += uint64(fileSize)
+		}
 		if cast.ToUint64(v) >= cast.ToUint64(userLimit[k]) {
 			return fmt.Errorf("The %s out the plan limit", k)
 		}
@@ -121,7 +128,9 @@ func (l *RateLimiter) increaseUserUpBandwidth(ctx context.Context, chainID uint8
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 
-	// TODO: update transfer up user usage
+	// update transfer up user usage
+	l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferUpSetKey(), chainID, fileSize)
+
 	return nil
 }
 
@@ -130,7 +139,9 @@ func (l *RateLimiter) increaseUserDownBandwidth(ctx context.Context, chainID uin
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
 
-	// TODO: update storage and transfer down user usage
+	// update transfer down user usage
+	l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferDownSetKey(), chainID, fileSize)
+
 	return nil
 }
 

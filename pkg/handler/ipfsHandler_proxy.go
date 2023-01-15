@@ -48,8 +48,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	switch pathStr {
-	// TODO: const the error
-	// FIXME: Query parameters (only for GET/DELETE methods)
 	case "/pin/ls":
 		var lsParam request.PinLsParam
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {

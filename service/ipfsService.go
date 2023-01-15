@@ -109,23 +109,25 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 	}
 	if addStorage > 0 {
 		// newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
-		newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
+		_, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
 		if err == nil {
-			s.UpdateIPFSUsage(
-				ctx, 
+			s.IncrIPFSUsage(
+				ctx,
 				apiKey,
-				 commonKey.IpfsLimitStorageSetKey(), 
-				 constant.ChainIPFS.ChainID, 
-				 newValue,
-				)
+				commonKey.IpfsLimitStorageSetKey(),
+				constant.ChainIPFS.ChainID,
+				int64(addStorage),
+			)
 		}
 	}
 	return s.ipfsDao.BatchSaveFiles(dbFiles)
 }
 
-func (s *IpfsService) UpdateIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, newVal interface{}) {
+func (s *IpfsService) IncrIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, addVal int64) {
 	logger := s.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
-	if err := s.cache.HSet(context.TODO(), cachekey.GetUserIPFSUsageKeyMate(apiKey, chainID), setKey, newVal); err != nil {
+
+	_, err := s.cache.HIncrBy(context.TODO(), cachekey.GetUserIPFSUsageKeyMate(apiKey, chainID).Key, setKey, addVal)
+	if err != nil {
 		logger.Error("set user auth usage failed", zap.Error(err))
 	}
 }
