@@ -19,7 +19,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const ipfsAPIKeyIndex = 3
+const (
+	ipfsAPIKeyIndex = 3
+	msg             = "message"
+)
 
 func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
 	pathList := strings.Split(c.Request().URL.Path, "/")
@@ -32,14 +35,21 @@ func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
 func (h *IPFSHandler) Proxy(c echo.Context) error {
 	logger := h.newLogger(c)
 
-	apiKey, err := h.bindApiKey(c)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+	var err error
+	errResp := map[string]interface{}{
+		msg: nil,
 	}
 
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusBadRequest, rlErr)
+	apiKey, err := h.bindApiKey(c)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusUnauthorized, errResp)
+	}
+
+	if lErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); lErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(lErr))
+		errResp[msg] = "out of request limit"
+		return c.JSON(http.StatusBadRequest, errResp)
 	}
 
 	ctx := c.Request().Context()
@@ -48,7 +58,8 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
 
 	if !h.ipfsService.CheckMethod(pathStr) {
-		return c.JSON(http.StatusBadRequest, fmt.Errorf("not supported method"))
+		errResp[msg] = "not supported method"
+		return c.JSON(http.StatusMethodNotAllowed, errResp)
 	}
 
 	var bwType uint8
@@ -66,14 +77,16 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 			0,
 			bwType,
 		); err != nil {
-			return c.JSON(http.StatusBadRequest, err)
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusInternalServerError, errResp)
 		}
 	case "/pin/ls":
 		var lsParam request.PinLsParam
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
 			errMsg := "read the pin ls param failed"
 			logger.Error(errMsg, zap.Error(err))
-			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+			errResp[msg] = errMsg
+			return c.JSON(http.StatusBadRequest, errResp)
 		}
 		if lsParam.Arg == "" {
 			return c.JSON(http.StatusOK, response.PinListMapResult{
@@ -83,23 +96,28 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	case "/pin/add", "/pin/rm":
 		pinParam := new(request.PinParam)
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, pinParam); err != nil {
-			errMsg := "read the add param failed"
-			logger.Error(errMsg, zap.Error(err))
-			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+			err = fmt.Errorf("read the add param failed")
+			logger.Error(err.Error(), zap.Error(err))
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusBadRequest, errResp)
 		}
 		if !h.ipfsService.CheckUserCid(ctx, apiKey, pinParam.Arg) {
-			return c.JSON(http.StatusBadRequest, fmt.Errorf("can`t operation this objects"))
+			err = fmt.Errorf("can`t operation this objects")
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusForbidden, errResp)
 		}
 	case "/pin/update":
 		updatePinParam := new(request.UpdatePinParam)
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, updatePinParam); err != nil {
 			errMsg := "read the update param failed"
 			logger.Error(errMsg, zap.Error(err))
-			return c.JSON(http.StatusBadRequest, fmt.Errorf(errMsg))
+			errResp[msg] = errMsg
+			return c.JSON(http.StatusBadRequest, errResp)
 		}
 		for _, arg := range updatePinParam.Arg {
 			if !h.ipfsService.CheckUserCid(ctx, apiKey, arg) {
-				return c.JSON(http.StatusBadRequest, fmt.Errorf("can`t operation this objects"))
+				errResp[msg] = "can`t operation this objects"
+				return c.JSON(http.StatusForbidden, errResp)
 			}
 		}
 	}
@@ -111,7 +129,8 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	// Create a new request to the target URL
 	targetReq, err := http.NewRequest(r.Method, requestURL, r.Body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
 	// Copy the request headers to the new request
@@ -124,7 +143,8 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	client := &http.Client{}
 	targetResp, err := client.Do(targetReq)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusBadRequest, errResp)
 	}
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
@@ -142,11 +162,13 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	// Copy the response body to the original response
 	body, err := io.ReadAll(targetResp.Body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 	_, err = w.Write(body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
 	var bwSize int64
@@ -193,7 +215,8 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 			h.JsonHandler.logger,
 			bwSize, bwType,
 		); err != nil {
-			return c.JSON(http.StatusBadRequest, err)
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusInternalServerError, errResp)
 		}
 		if err := h.JsonHandler.rateLimiter.BandwidthHook(
 			ctx,
