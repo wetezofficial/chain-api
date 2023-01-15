@@ -39,9 +39,13 @@ func (l *RateLimiter) BandwidthHook(
 
 	switch bwType {
 	case BandWidthUpload:
-		_ = l.increaseUserUpBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
+		l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Hour*36, logger)
+		// update transfer up user usage
+		l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferUpSetKey(), chainID, fileSize)
 	case BandWidthDownload:
-		_ = l.increaseUserDownBandwidth(ctx, chainID, apiKey, t, fileSize, logger)
+		l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayDownKey(apiKey, chainID, t), fileSize, time.Hour*36, logger)
+		// update transfer down user usage
+		l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferDownSetKey(), chainID, fileSize)
 	default:
 		return errors.New("unsupported type")
 	}
@@ -49,7 +53,6 @@ func (l *RateLimiter) BandwidthHook(
 	return nil
 }
 
-// CheckIPFSLimit TODO: 思考 CheckIPFSLimit 可不可以和 bandHook 中的 incr 合并到一起
 func (l *RateLimiter) CheckIPFSLimit(
 	ctx context.Context,
 	apiKey string,
@@ -120,28 +123,6 @@ func (l *RateLimiter) CheckIPFSLimit(
 			return fmt.Errorf("The %s out the plan limit", k)
 		}
 	}
-
-	return nil
-}
-
-func (l *RateLimiter) increaseUserUpBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourUpKey(apiKey, chainID), fileSize, time.Minute*90, logger)
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthUpKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
-
-	// update transfer up user usage
-	l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferUpSetKey(), chainID, fileSize)
-
-	return nil
-}
-
-func (l *RateLimiter) increaseUserDownBandwidth(ctx context.Context, chainID uint8, apiKey string, t time.Time, fileSize int64, logger *zap.Logger) error {
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWHourDownKey(apiKey, chainID), fileSize, time.Minute*90, logger)
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWDayDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
-	l.increaseAndSetExpire(ctx, cachekey.GetUserBWMonthDownKey(apiKey, chainID, t), fileSize, time.Second*129600, logger)
-
-	// update transfer down user usage
-	l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferDownSetKey(), chainID, fileSize)
 
 	return nil
 }
