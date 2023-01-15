@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"starnet/starnet/constant"
+
 	"starnet/chain-api/pkg/response"
 
 	"starnet/chain-api/pkg/request"
@@ -17,12 +19,14 @@ import (
 	"go.uber.org/zap"
 )
 
+const ipfsAPIKeyIndex = 3
+
 func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
 	pathList := strings.Split(c.Request().URL.Path, "/")
-	if len(pathList) < 3 {
+	if len(pathList) < ipfsAPIKeyIndex {
 		return "", errors.New("path error")
 	}
-	return pathList[3], nil
+	return pathList[ipfsAPIKeyIndex], nil
 }
 
 func (h *IPFSHandler) Proxy(c echo.Context) error {
@@ -47,7 +51,23 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, fmt.Errorf("not supported method"))
 	}
 
+	var bwType uint8
+
 	switch pathStr {
+	case "/add", "/dag/put", "/block/put":
+		bwType = ratelimitv1.BandWidthUpload
+	case "/dag/get", "/get", "/cat", "/block/get":
+		bwType = ratelimitv1.BandWidthDownload
+		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
+			ctx,
+			apiKey,
+			constant.ChainIPFS.ChainID,
+			h.JsonHandler.logger,
+			0,
+			bwType,
+		); err != nil {
+			return c.JSON(http.StatusBadRequest, err)
+		}
 	case "/pin/ls":
 		var lsParam request.PinLsParam
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
@@ -85,7 +105,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	// Create a new HTTP client
-	// TODO: maybe need remove same query param value
+	// TODO: maybe will remove same query param value
 	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
 
 	// Create a new request to the target URL
@@ -130,7 +150,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	var bwSize int64
-	var bwType uint8
 
 	switch pathStr {
 	case "/add":
@@ -138,7 +157,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, addParam); err != nil {
 			logger.Error("read the add param failed", zap.Error(err))
 		}
-		bwSize, bwType = getBwUploadParam(c, logger)
+		bwSize = getBwUploadParam(c, logger)
 		var addResult response.AddResp
 		var addResultList []response.AddResp
 		if err = json.Unmarshal(body, &addResult); err != nil {
@@ -162,13 +181,27 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	case "/dag/get", "/get", "/cat", "/block/get":
 		bwSize = int64(len(body))
-		bwType = ratelimitv1.BandWidthDownload
 	case "/dag/put", "/block/put":
-		bwSize, bwType = getBwUploadParam(c, logger)
+		bwSize = getBwUploadParam(c, logger)
 	}
 
 	if bwType > 0 {
-		if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, bwSize, bwType); err != nil {
+		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
+			ctx,
+			apiKey,
+			constant.ChainIPFS.ChainID,
+			h.JsonHandler.logger,
+			bwSize, bwType,
+		); err != nil {
+			return c.JSON(http.StatusBadRequest, err)
+		}
+		if err := h.JsonHandler.rateLimiter.BandwidthHook(
+			ctx,
+			h.JsonHandler.chain.ChainID,
+			apiKey,
+			bwSize,
+			bwType,
+		); err != nil {
 			logger.Error("bandwidth hook failed:", zap.Error(err))
 		}
 	}
@@ -176,13 +209,13 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	return nil
 }
 
-func getBwUploadParam(c echo.Context, logger *zap.Logger) (int64, uint8) {
+func getBwUploadParam(c echo.Context, logger *zap.Logger) int64 {
 	requestBody, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		logger.Error("read requestBody failed", zap.Error(err))
-		return 0, 0
+		return 0
 	}
-	return int64(len(requestBody)), ratelimitv1.BandWidthUpload
+	return int64(len(requestBody))
 }
 
 func (*IPFSHandler) proxyURL(pathStr, queryStr string) string {
