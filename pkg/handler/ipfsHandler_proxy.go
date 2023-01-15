@@ -157,15 +157,9 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	for k, v := range targetResp.Header {
 		w.Header()[k] = v
 	}
-	w.WriteHeader(targetResp.StatusCode)
 
 	// Copy the response body to the original response
 	body, err := io.ReadAll(targetResp.Body)
-	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusInternalServerError, errResp)
-	}
-	_, err = w.Write(body)
 	if err != nil {
 		errResp[msg] = err.Error()
 		return c.JSON(http.StatusInternalServerError, errResp)
@@ -227,6 +221,13 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		); err != nil {
 			logger.Error("bandwidth hook failed:", zap.Error(err))
 		}
+	}
+
+	w.WriteHeader(targetResp.StatusCode)
+	_, err = w.Write(body)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
 	return nil
