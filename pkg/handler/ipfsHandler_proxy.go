@@ -169,10 +169,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 
 	switch pathStr {
 	case "/add":
-		addParam := new(request.AddParam)
-		if err := (&echo.DefaultBinder{}).BindQueryParams(c, addParam); err != nil {
-			logger.Error("read the add param failed", zap.Error(err))
-		}
 		bwSize = getBwUploadParam(c, logger)
 		var addResult response.AddResp
 		var addResultList []response.AddResp
