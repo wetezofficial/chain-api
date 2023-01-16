@@ -102,8 +102,11 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 	}
 	var addStorage uint64
 	for _, v := range dbFiles {
-		count, _ := s.ipfsDao.CountUserFile(userID, v.CID)
-		if count == 1 {
+		count, err := s.ipfsDao.CountUserFile(userID, v.CID)
+		if err != nil {
+			s.logger.With(zap.Int("userID", userID), zap.String("cid", v.CID)).Error("count user file failed", zap.Error(err))
+		}
+		if count == 0 {
 			addStorage += v.FileSize
 		}
 	}
@@ -132,7 +135,7 @@ func (s *IpfsService) IncrIPFSUsage(ctx context.Context, apiKey, setKey string, 
 	}
 }
 
-// GetIpfsUserNoCache
+// GetIpfsUserNoCache .
 func (s *IpfsService) GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error) {
 	user := new(models.IPFSUser)
 	return user, s.ipfsDao.GetIPFSUser(s.getUserIDByAPIKey(ctx, apiKey), user)

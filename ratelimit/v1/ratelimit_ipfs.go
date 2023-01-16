@@ -96,11 +96,11 @@ func (l *RateLimiter) CheckIPFSLimit(
 			).Err(); err != nil {
 				logger.Error("set user auth failed", zap.Error(err))
 			}
-			return nil
+		} else {
+			errorMsg := "can not read the user ipfs auth status"
+			logger.Error(errorMsg, zap.Error(err))
+			return fmt.Errorf(errorMsg)
 		}
-		errorMsg := "can not read the user ipfs auth status"
-		logger.Error(errorMsg, zap.Error(err))
-		return fmt.Errorf(errorMsg)
 	}
 
 	userLimit, err := l.rdb.HGetAll(ctx, cachekey.GetUserIpfsLimitKey(apiKey, chainID)).Result()
@@ -120,7 +120,7 @@ func (l *RateLimiter) CheckIPFSLimit(
 			usage += uint64(fileSize)
 		}
 		if cast.ToUint64(v) >= cast.ToUint64(userLimit[k]) {
-			return fmt.Errorf("The %s out the plan limit", k)
+			return fmt.Errorf("the %s out the plan limit", k)
 		}
 	}
 

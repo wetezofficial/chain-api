@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/spf13/cast"
 	"io"
 	"net/http"
 	"strings"
@@ -22,6 +23,7 @@ import (
 const (
 	ipfsAPIKeyIndex = 3
 	msg             = "message"
+	lengthHeader    = "Content-Length"
 )
 
 func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
@@ -169,7 +171,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 
 	switch pathStr {
 	case "/add":
-		bwSize = getBwUploadParam(c, logger)
+		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
 		var addResult response.AddResp
 		var addResultList []response.AddResp
 		if err = json.Unmarshal(body, &addResult); err != nil {
@@ -194,7 +196,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	case "/dag/get", "/get", "/cat", "/block/get":
 		bwSize = int64(len(body))
 	case "/dag/put", "/block/put":
-		bwSize = getBwUploadParam(c, logger)
+		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
 	}
 
 	if bwType > 0 {
@@ -227,15 +229,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	return nil
-}
-
-func getBwUploadParam(c echo.Context, logger *zap.Logger) int64 {
-	requestBody, err := io.ReadAll(c.Request().Body)
-	if err != nil {
-		logger.Error("read requestBody failed", zap.Error(err))
-		return 0
-	}
-	return int64(len(requestBody))
 }
 
 func (*IPFSHandler) proxyURL(pathStr, queryStr string) string {
