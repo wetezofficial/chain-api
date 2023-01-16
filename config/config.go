@@ -81,8 +81,9 @@ type Config struct {
 	} `mapstructure:"mysql"`
 
 	IPFSCluster struct {
-		Host string `mapstructure:"host"`
-		Port int    `mapstructure:"port"`
+		Schemes string `mapstructure:"schemes"`
+		Host    string `mapstructure:"host"`
+		Port    int    `mapstructure:"port"`
 	} `mapstructure:"ipfs_cluster"`
 
 	Redis []starnetRedis.Conf `mapstructure:"redis"`

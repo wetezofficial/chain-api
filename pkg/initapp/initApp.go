@@ -8,9 +8,6 @@ import (
 	"starnet/chain-api/service"
 	"starnet/portal-api/pkg/cache"
 
-	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
-	ma "github.com/multiformats/go-multiaddr"
-
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
@@ -49,20 +46,7 @@ func NewApp(configFile string) *app.App {
 
 	rdbCache := cache.NewRedisCache(rdb, "chain:")
 
-	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", cfg.IPFSCluster.Host, cfg.IPFSCluster.Port))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	ipfsCfg := &client.Config{
-		APIAddr:           addr,
-		DisableKeepAlives: true,
-	}
-	ipfsClient, err := client.NewDefaultClient(ipfsCfg)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, ipfsClient, logger)
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdbCache, logger)
 
 	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
 	if err != nil {

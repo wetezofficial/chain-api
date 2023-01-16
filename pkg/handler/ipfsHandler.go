@@ -1,37 +1,37 @@
 package handler
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
-	"mime/multipart"
+	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+	"github.com/spf13/cast"
+	"go.uber.org/zap"
+	"io"
 	"net/http"
-	"strings"
-	"time"
-
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/request"
+	"starnet/chain-api/pkg/response"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
-	"starnet/starnet/models"
-
-	files "github.com/ipfs/go-ipfs-files"
-	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
+	"strings"
 )
 
 type IPFSHandler struct {
 	JsonHandler *JsonRpcHandler
 	ipfsService serviceInterface.IpfsService
+	endpoint    string
 }
 
-func NewIPFSCluster(
+func NewIPFSHandler(
 	chain constant.Chain,
 	app *app.App,
 ) *IPFSHandler {
 	return &IPFSHandler{
 		JsonHandler: NewJsonRpcHandler(chain, nil, nil, nil, nil, app),
 		ipfsService: app.IPFSSrv,
+		endpoint:    fmt.Sprintf("%s://%s:%d", app.Config.IPFSCluster.Schemes, app.Config.IPFSCluster.Host, app.Config.IPFSCluster.Port),
 	}
 }
 
@@ -40,178 +40,228 @@ func (h *IPFSHandler) newLogger(c echo.Context) *zap.Logger {
 	return h.JsonHandler.logger.With(zap.String("chain", h.JsonHandler.chain.Name), zap.String("request_id", c.Request().Context().Value("request_id").(string)))
 }
 
-// Add .
-func (h *IPFSHandler) Add(c echo.Context) error {
+const (
+	ipfsAPIKeyIndex = 3
+	msg             = "message"
+	lengthHeader    = "Content-Length"
+)
+
+func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
+	pathList := strings.Split(c.Request().URL.Path, "/")
+	if len(pathList) < ipfsAPIKeyIndex {
+		return "", errors.New("path error")
+	}
+	return pathList[ipfsAPIKeyIndex], nil
+}
+
+func (h *IPFSHandler) Proxy(c echo.Context) error {
 	logger := h.newLogger(c)
+
+	var err error
+	errResp := map[string]interface{}{
+		msg: nil,
+	}
 
 	apiKey, err := h.bindApiKey(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusUnauthorized, errResp)
 	}
 
-	//if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-	//	return c.JSON(http.StatusOK, rlErr)
-	//}
-
-	params := request.AddParam{}
-	if err := c.Bind(&params); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+	if lErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); lErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(lErr))
+		errResp[msg] = "out of request limit"
+		return c.JSON(http.StatusBadRequest, errResp)
 	}
 
-	// Multipart form
-	form, err := c.MultipartForm()
-	if err != nil {
-		logger.Error("param bind error", zap.Error(err))
-		return c.JSON(http.StatusBadRequest, err)
-	}
-	requestFiles := form.File["file"]
+	ctx := c.Request().Context()
+	w := c.Response().Writer
+	r := c.Request()
+	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
 
-	var rootDir string
-	var dataSize int64
-	for _, f := range requestFiles {
-		if strings.Contains(f.Filename, "/") {
-			rootDir = strings.Split(f.Filename, "/")[0]
+	if !h.ipfsService.CheckMethod(pathStr) {
+		errResp[msg] = "not supported method"
+		return c.JSON(http.StatusMethodNotAllowed, errResp)
+	}
+
+	var bwType uint8
+
+	switch pathStr {
+	case "/add", "/dag/put", "/block/put":
+		bwType = ratelimitv1.BandWidthUpload
+	case "/dag/get", "/get", "/cat", "/block/get":
+		bwType = ratelimitv1.BandWidthDownload
+		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
+			ctx,
+			apiKey,
+			constant.ChainIPFS.ChainID,
+			h.JsonHandler.logger,
+			0,
+			bwType,
+		); err != nil {
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusInternalServerError, errResp)
 		}
-		dataSize += f.Size
-	}
-	if params.WrapWithDirectory && rootDir == "" {
-		rootDir = "root"
-	}
-
-	fs := make(map[string]files.Node)
-	fileMap := make(map[string]*multipart.FileHeader)
-	if rootDir != "" {
-		for _, f := range requestFiles {
-			fileMap[rootDir+"-"+f.Filename] = f
+	case "/pin/ls":
+		var lsParam request.PinLsParam
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
+			errMsg := "read the pin ls param failed"
+			logger.Error(errMsg, zap.Error(err))
+			errResp[msg] = errMsg
+			return c.JSON(http.StatusBadRequest, errResp)
 		}
-		tree := processFileMap(rootDir, fileMap)
-		for _, node := range tree.Files {
-			fmt.Println(node)
-			if node.FileData == nil {
-				fs[node.Name], err = newMapDirectory(node.Files)
-				if err != nil {
-					return c.JSON(http.StatusBadRequest, err)
-				}
-			} else {
-				file, err := node.FileData.Open()
-				if err != nil {
-					return c.JSON(http.StatusBadRequest, err)
-				}
-				fs[node.Name] = files.NewReaderFile(file)
+		if lsParam.Arg == "" {
+			return c.JSON(http.StatusOK, response.PinListMapResult{
+				Keys: map[string]response.PinResp{},
+			})
+		}
+	case "/pin/add", "/pin/rm":
+		pinParam := new(request.PinParam)
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, pinParam); err != nil {
+			err = fmt.Errorf("read the add param failed")
+			logger.Error(err.Error(), zap.Error(err))
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusBadRequest, errResp)
+		}
+		if !h.ipfsService.CheckUserCid(ctx, apiKey, pinParam.Arg) {
+			err = fmt.Errorf("can`t operation this objects")
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusForbidden, errResp)
+		}
+	case "/pin/update":
+		updatePinParam := new(request.UpdatePinParam)
+		if err := (&echo.DefaultBinder{}).BindQueryParams(c, updatePinParam); err != nil {
+			errMsg := "read the update param failed"
+			logger.Error(errMsg, zap.Error(err))
+			errResp[msg] = errMsg
+			return c.JSON(http.StatusBadRequest, errResp)
+		}
+		for _, arg := range updatePinParam.Arg {
+			if !h.ipfsService.CheckUserCid(ctx, apiKey, arg) {
+				errResp[msg] = "can`t operation this objects"
+				return c.JSON(http.StatusForbidden, errResp)
 			}
 		}
-	} else {
-		for _, f := range requestFiles {
-			file, err := f.Open()
-			if err != nil {
-				return c.JSON(http.StatusBadRequest, err)
-			}
-			fs[f.Filename] = files.NewReaderFile(file)
-		}
 	}
 
-	sf := files.NewMapDirectory(fs)
+	// Create a new HTTP client
+	// TODO: maybe will remove same query param value
+	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
 
-	results, err := h.ipfsService.AddCluster(c.Request().Context(), apiKey, params, files.NewMultiFileReader(sf, true))
+	// Create a new request to the target URL
+	targetReq, err := http.NewRequest(r.Method, requestURL, r.Body)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
-	// bandwidth use check
-	if err := h.JsonHandler.rateLimiter.BandwidthHook(c.Request().Context(), h.JsonHandler.chain.ChainID, apiKey, dataSize, ratelimitv1.BandWidthUpload); err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+	// Copy the request headers to the new request
+	targetReq.Header = r.Header
+	targetReq.Header["User-Agent"] = nil
+	targetReq.Header["Referer"] = nil
+	targetReq.Header["Origin"] = nil
+
+	// Forward the request to the target URL
+	client := &http.Client{}
+	targetResp, err := client.Do(targetReq)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusBadRequest, errResp)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Error("close the targetResp err:", zap.Error(err))
+		}
+	}(targetResp.Body)
+
+	// Copy the response headers to the original response
+	for k, v := range targetResp.Header {
+		w.Header()[k] = v
 	}
 
-	return c.JSON(http.StatusOK, results)
-}
+	// Copy the response body to the original response
+	body, err := io.ReadAll(targetResp.Body)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
+	}
 
-func newMapDirectory(teeFiles map[string]fileTree) (files.Directory, error) {
-	var err error
-	filesNode := make(map[string]files.Node)
-	for _, node := range teeFiles {
-		fmt.Println(node)
-		if node.FileData == nil {
-			filesNode[node.Name], err = newMapDirectory(node.Files)
-			if err != nil {
-				return nil, err
+	var bwSize int64
+
+	switch pathStr {
+	case "/add":
+		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
+		var addResult response.AddResp
+		var addResultList []response.AddResp
+		if err = json.Unmarshal(body, &addResult); err != nil {
+			logger.Error("unmarshal the add result failed", zap.Error(err))
+			list := strings.Split(string(body), "}")
+			for _, v := range list {
+				if len(v) < 5 {
+					continue
+				}
+				if err = json.Unmarshal([]byte(v+"}"), &addResult); err != nil {
+					logger.Error("unmarshal the add result failed", zap.Error(err))
+					continue
+				}
+				addResultList = append(addResultList, addResult)
 			}
 		} else {
-			file, err := node.FileData.Open()
-			if err != nil {
-				return nil, err
-			}
-			filesNode[node.Name] = files.NewReaderFile(file)
+			addResultList = append(addResultList, addResult)
+		}
+		if err = h.ipfsService.Add(ctx, apiKey, addResultList); err != nil {
+			logger.Error("save upload file to database failed", zap.Error(err))
+		}
+	case "/dag/get", "/get", "/cat", "/block/get":
+		bwSize = int64(len(body))
+	case "/dag/put", "/block/put":
+		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
+	}
+
+	if bwType > 0 {
+		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
+			ctx,
+			apiKey,
+			constant.ChainIPFS.ChainID,
+			h.JsonHandler.logger,
+			bwSize, bwType,
+		); err != nil {
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusInternalServerError, errResp)
+		}
+		if err := h.JsonHandler.rateLimiter.BandwidthHook(
+			ctx,
+			h.JsonHandler.chain.ChainID,
+			apiKey,
+			bwSize,
+			bwType,
+		); err != nil {
+			logger.Error("bandwidth hook failed:", zap.Error(err))
 		}
 	}
-	return files.NewMapDirectory(filesNode), nil
-}
 
-type fileTree struct {
-	Name     string
-	FileData *multipart.FileHeader
-	Files    map[string]fileTree
-}
-
-func processFileMap(rootDir string, m map[string]*multipart.FileHeader) fileTree {
-	root := fileTree{
-		Name:     rootDir,
-		FileData: nil,
-		Files:    make(map[string]fileTree),
-	}
-
-	for path, data := range m {
-		pathSegments := strings.Split(path, "/")
-		processPathSegments(root, pathSegments, data)
-	}
-
-	return root
-}
-
-func processPathSegments(root fileTree, pathSegments []string, data *multipart.FileHeader) {
-	currentSegment := pathSegments[0]
-
-	if len(pathSegments) == 1 {
-		root.Files[currentSegment] = fileTree{
-			Name:     currentSegment,
-			FileData: data,
-			Files:    nil,
-		}
-		return
-	}
-
-	subtree, ok := root.Files[currentSegment]
-	if !ok {
-		subtree = fileTree{
-			Name:     currentSegment,
-			FileData: nil,
-			Files:    make(map[string]fileTree),
-		}
-		root.Files[currentSegment] = subtree
-	}
-	processPathSegments(subtree, pathSegments[1:], data)
-}
-
-func (h *IPFSHandler) List(c echo.Context) error {
-	logger := h.newLogger(c)
-
-	apiKey, err := h.JsonHandler.bindApiKey(c)
+	w.WriteHeader(targetResp.StatusCode)
+	_, err = w.Write(body)
 	if err != nil {
-		return err
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		return c.JSON(http.StatusOK, rlErr)
-	}
+	return nil
+}
 
-	ctx, cancelFunc := context.WithTimeout(c.Request().Context(), time.Second*5)
-	defer cancelFunc()
-
-	var fileList []models.IPFSFile
-	err = h.ipfsService.ListUserFile(ctx, apiKey, &fileList)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+func (h *IPFSHandler) proxyURL(pathStr, queryStr string) string {
+	requestURL := h.endpoint + "/api/v0" + pathStr
+	if queryStr != "" {
+		requestURL += "?" + queryStr
 	}
-	return c.JSON(http.StatusOK, fileList)
+	return requestURL
+}
+
+func (h *IPFSHandler) ipfsMethod(apiKey string, path string) string {
+	pathPre := "/ipfs/v0/" + apiKey
+	pathStr := strings.TrimPrefix(strings.TrimPrefix(path, pathPre), "/api/v0")
+	fmt.Println(pathStr)
+	return pathStr
 }

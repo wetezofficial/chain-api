@@ -57,8 +57,9 @@ port = 3306
 user = "root"
 
 [ipfs_cluster]
+schemes = "http" # https
 host = "127.0.0.1"
-port = 9094
+port = 5001
 
 [log]
 # debug, info, warn, error

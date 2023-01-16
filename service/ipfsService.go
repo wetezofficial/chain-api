@@ -16,15 +16,21 @@ import (
 	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/models"
-
-	"github.com/ipfs-cluster/ipfs-cluster/api/rest/client"
-	shell "github.com/ipfs/go-ipfs-api"
 )
 
 var _ serviceInterface.IpfsService = &IpfsService{}
 
+// IpfsService .
+type IpfsService struct {
+	ipfsDao     daoInterface.IPFSDao
+	userDao     daoInterface.UserDao
+	cache       cache.Cache
+	allowMethod []string
+	logger      *zap.Logger
+}
+
 // NewIpfsService .
-func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, client client.Client, logger *zap.Logger) *IpfsService {
+func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, logger *zap.Logger) *IpfsService {
 	allowMethod := []string{
 		"/add",
 		"/block/get",
@@ -45,22 +51,18 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, 
 		ipfsDao:     ipfsDao,
 		userDao:     userDao,
 		cache:       cache,
-		client:      client,
-		ipfsShell:   client.IPFS(context.Background()),
 		allowMethod: allowMethod,
 		logger:      logger,
 	}
 }
 
-// IpfsService .
-type IpfsService struct {
-	ipfsDao     daoInterface.IPFSDao
-	userDao     daoInterface.UserDao
-	cache       cache.Cache
-	client      client.Client
-	ipfsShell   *shell.Shell
-	allowMethod []string
-	logger      *zap.Logger
+func (s *IpfsService) CheckMethod(pathStr string) bool {
+	for _, v := range s.allowMethod {
+		if v == pathStr {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *IpfsService) CheckUserCid(ctx context.Context, apiKey, cid string) bool {

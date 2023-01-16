@@ -12,8 +12,6 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/go-uuid v1.0.1
 	github.com/ipfs-cluster/ipfs-cluster v1.0.4
-	github.com/ipfs/go-ipfs-api v0.3.0
-	github.com/ipfs/go-ipfs-files v0.1.1
 	github.com/jonboulle/clockwork v0.3.0 // indirect
 	github.com/labstack/echo/v4 v4.7.2
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible

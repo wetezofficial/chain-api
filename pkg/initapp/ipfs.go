@@ -13,7 +13,7 @@ import (
 
 func initIPFSClient(app *app.App) error {
 	chain := constant.ChainIPFS
-	app.IPFSHandler = handler.NewIPFSCluster(chain, app)
+	app.IPFSHandler = handler.NewIPFSHandler(chain, app)
 	return nil
 }
 
