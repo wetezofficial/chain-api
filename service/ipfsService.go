@@ -111,11 +111,11 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 	}
 	var addStorage uint64
 	for _, v := range dbFiles {
-		count, err := s.ipfsDao.CountUserFile(userID, v.CID)
+		id, err := s.ipfsDao.SelectUserFileID(userID, v.CID)
 		if err != nil {
 			logger.With(zap.String("cid", v.CID)).Error("count user file failed", zap.Error(err))
 		}
-		if count == 0 {
+		if id == 0 {
 			addStorage += v.FileSize
 		}
 	}
