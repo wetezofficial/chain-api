@@ -5,6 +5,7 @@ import (
 
 	"starnet/chain-api/pkg/response"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/spf13/cast"
 	"go.uber.org/zap"
 
@@ -24,13 +25,14 @@ var _ serviceInterface.IpfsService = &IpfsService{}
 type IpfsService struct {
 	ipfsDao     daoInterface.IPFSDao
 	userDao     daoInterface.UserDao
+	rdb         redis.UniversalClient
 	cache       cache.Cache
 	allowMethod []string
 	logger      *zap.Logger
 }
 
 // NewIpfsService .
-func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, cache cache.Cache, logger *zap.Logger) *IpfsService {
+func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, rdb redis.UniversalClient, cache cache.Cache, logger *zap.Logger) *IpfsService {
 	allowMethod := []string{
 		"/add",
 		"/block/get",
@@ -50,6 +52,7 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, 
 	return &IpfsService{
 		ipfsDao:     ipfsDao,
 		userDao:     userDao,
+		rdb:         rdb,
 		cache:       cache,
 		allowMethod: allowMethod,
 		logger:      logger,
@@ -92,7 +95,11 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 
 // Add file info to the database
 func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []response.AddResp) error {
+
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
+	chainID := constant.ChainIPFS.ChainID
+	logger := s.logger.With(zap.String("apiKey", apiKey), zap.Int("userID", userID), zap.Uint8("chainId", chainID))
+
 	var dbFiles []*models.IPFSFile
 	for _, v := range fileList {
 		dbFiles = append(dbFiles, &models.IPFSFile{
@@ -106,14 +113,13 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 	for _, v := range dbFiles {
 		count, err := s.ipfsDao.CountUserFile(userID, v.CID)
 		if err != nil {
-			s.logger.With(zap.Int("userID", userID), zap.String("cid", v.CID)).Error("count user file failed", zap.Error(err))
+			logger.With(zap.String("cid", v.CID)).Error("count user file failed", zap.Error(err))
 		}
 		if count == 0 {
 			addStorage += v.FileSize
 		}
 	}
 	if addStorage > 0 {
-		// newValue, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
 		_, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
 		if err == nil {
 			s.IncrIPFSUsage(

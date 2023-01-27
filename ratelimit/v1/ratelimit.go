@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"starnet/chain-api/pkg/utils"
 	"starnet/chain-api/service"
 	"starnet/starnet/cachekey"
 
@@ -99,11 +100,11 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 
 	// add chain request count
 	if res == 1 && n > 0 {
-		l.increaseAndSetExpire(ctx, cachekey.GetChainHourKey(chainID, t), int64(n), time.Minute*90, logger)
-		l.increaseAndSetExpire(ctx, cachekey.GetChainDayKey(chainID, t), int64(n), time.Hour*36, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetChainHourKey(chainID, t), int64(n), time.Minute*90, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetChainDayKey(chainID, t), int64(n), time.Hour*36, logger)
 
-		l.increaseAndSetExpire(ctx, cachekey.GetTotalQuotaHourKey(t), int64(n), time.Minute*90, logger)
-		l.increaseAndSetExpire(ctx, cachekey.GetTotalQuotaDayKey(t), int64(n), time.Hour*36, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetTotalQuotaHourKey(t), int64(n), time.Minute*90, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetTotalQuotaDayKey(t), int64(n), time.Hour*36, logger)
 	}
 
 	if res == NotExist {
