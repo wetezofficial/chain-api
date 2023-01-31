@@ -91,6 +91,7 @@ func (l *RateLimiter) CheckIPFSLimit(
 	return nil
 }
 
+// GetIPFSUserUsage query ipfs usage return map, if not exist init data
 func (l *RateLimiter) GetIPFSUserUsage(ctx context.Context, apiKey string, chainID uint8, logger *zap.Logger) (map[string]uint64, error, bool) {
 	result := make(map[string]uint64, 3)
 	usageRecord, err := l.rdb.HGetAll(ctx, cachekey.GetUserIPFSUsageKey(apiKey, chainID)).Result()

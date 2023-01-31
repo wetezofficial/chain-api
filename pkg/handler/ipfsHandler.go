@@ -3,10 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
-	"github.com/spf13/cast"
-	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"starnet/chain-api/pkg/app"
@@ -16,6 +12,11 @@ import (
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
 	"strings"
+
+	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+	"github.com/spf13/cast"
+	"go.uber.org/zap"
 )
 
 type IPFSHandler struct {
@@ -145,7 +146,6 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	// Create a new HTTP client
-	// TODO: maybe will remove same query param value
 	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
 
 	// Create a new request to the target URL
