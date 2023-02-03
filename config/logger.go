@@ -95,7 +95,7 @@ func getEncoderCore() (core zapcore.Core) {
 
 // CustomTimeEncoder .
 func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(t.Format("starnet_portal_api:" + "2006/01/02 - 15:04:05.000"))
+	enc.AppendString(t.Format("starnet_chain_api:" + "2006/01/02 - 15:04:05.000"))
 }
 
 func getWriteSyncer() (zapcore.WriteSyncer, error) {
