@@ -10,13 +10,12 @@ import (
 	"go.uber.org/zap"
 
 	serviceInterface "starnet/chain-api/service/interface"
-	"starnet/portal-api/app/cachekey"
-	commonKey "starnet/starnet/cachekey"
+	"starnet/starnet/cachekey"
 	"starnet/starnet/constant"
 
-	"starnet/portal-api/pkg/cache"
 	daoInterface "starnet/starnet/dao/interface"
 	"starnet/starnet/models"
+	"starnet/starnet/pkg/cache"
 )
 
 var _ serviceInterface.IpfsService = &IpfsService{}
@@ -125,7 +124,7 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 			s.IncrIPFSUsage(
 				ctx,
 				apiKey,
-				commonKey.IpfsLimitStorageSetKey(),
+				cachekey.IpfsLimitStorageSetKey(),
 				constant.ChainIPFS.ChainID,
 				int64(addStorage),
 			)
@@ -166,7 +165,7 @@ func (s *IpfsService) getUserFile(ctx context.Context, apiKey, cid string) (*mod
 func (s *IpfsService) getUserIDByAPIKey(ctx context.Context, apiKey string) int {
 	var userID int
 	_ = s.cache.CacheFn(ctx,
-		cachekey.APIKeyUserID(apiKey),
+		cachekey.APIKeyMeteUserID(apiKey),
 		&userID,
 		func() error {
 			var err error

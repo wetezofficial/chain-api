@@ -6,7 +6,7 @@ import (
 
 	"starnet/chain-api/pkg/db"
 	"starnet/chain-api/service"
-	"starnet/portal-api/pkg/cache"
+	"starnet/starnet/pkg/cache"
 
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
