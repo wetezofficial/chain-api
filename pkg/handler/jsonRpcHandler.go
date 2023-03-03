@@ -195,10 +195,12 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
 	}
 
-	resp, err = h.clearInfo(c, resp, req.GetSingleCall().Method)
-	if err != nil {
-		logger.Error("fail to clear sensitive info", zap.Error(err))
-		return c.JSON(200, jsonrpc.NewInternalServerError(nil))
+	if req.GetSingleCall() != nil {
+		resp, err = h.clearInfo(c, resp, req.GetSingleCall().Method)
+		if err != nil {
+			logger.Error("fail to clear sensitive info", zap.Error(err))
+			return c.JSON(200, jsonrpc.NewInternalServerError(nil))
+		}
 	}
 
 	logger.Debug("got response", zap.ByteString("resp", resp))
