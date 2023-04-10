@@ -46,7 +46,9 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, 
 		"/pin/ls",
 		"/pin/rm",
 		"/pin/update",
+
 		"/version",
+		"/stats/bw",
 	}
 	return &IpfsService{
 		ipfsDao:     ipfsDao,
