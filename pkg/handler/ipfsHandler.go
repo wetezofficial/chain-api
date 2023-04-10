@@ -69,11 +69,12 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, errResp)
 	}
 
-	if lErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); lErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(lErr))
-		errResp[msg] = "out of request limit"
-		return c.JSON(http.StatusBadRequest, errResp)
-	}
+	// FIXME: ipfs stats api
+	//if lErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); lErr != nil {
+	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(lErr))
+	//	errResp[msg] = "out of request limit"
+	//	return c.JSON(http.StatusBadRequest, errResp)
+	//}
 
 	ctx := c.Request().Context()
 	w := c.Response().Writer
