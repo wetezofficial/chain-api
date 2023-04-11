@@ -70,7 +70,7 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
-	e.Any("/ipfs/v0/:apiKey/*", app.IPFSHandler.Proxy)
+	e.Any("/ipfs/v0/*", app.IPFSHandler.Proxy)
 
 	return e
 }

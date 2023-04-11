@@ -43,10 +43,11 @@ func NewApp(configFile string) *app.App {
 
 	ipfsDao := dao.NewIPFSDao(_db)
 	userDao := dao.NewUserDao(_db)
+	projectDao:=dao.NewProjectDao(_db)
 
 	rdbCache := cache.NewRedisCache(rdb, "chain:")
 
-	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, rdb, rdbCache, logger)
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao,projectDao, rdb, rdbCache, logger)
 
 	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
 	if err != nil {

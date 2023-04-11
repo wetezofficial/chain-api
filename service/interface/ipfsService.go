@@ -11,6 +11,7 @@ type IpfsService interface {
 	ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error
 	CheckMethod(pathStr string) bool
 	CheckUserCid(ctx context.Context, apiKey, cid string) bool
+	GetApiKeyByActiveGateway(ctx context.Context, subdomain string) string
 	GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error)
 	IncrIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, addVal int64)
 }

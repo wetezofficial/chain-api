@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
-	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
@@ -42,7 +43,7 @@ func (h *IPFSHandler) newLogger(c echo.Context) *zap.Logger {
 }
 
 const (
-	ipfsAPIKeyIndex = 3
+	ipfsAPIKeyIndex = 4
 	msg             = "message"
 	lengthHeader    = "Content-Length"
 )
@@ -52,7 +53,10 @@ func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
 	if len(pathList) < ipfsAPIKeyIndex {
 		return "", errors.New("path error")
 	}
-	return pathList[ipfsAPIKeyIndex], nil
+	if len(pathList[ipfsAPIKeyIndex-1]) != 32 {
+		return "", errors.New("key error")
+	}
+	return pathList[ipfsAPIKeyIndex-1], nil
 }
 
 func (h *IPFSHandler) Proxy(c echo.Context) error {
@@ -62,32 +66,41 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	errResp := map[string]interface{}{
 		msg: nil,
 	}
+	ctx := c.Request().Context()
 
-	apiKey, err := h.bindApiKey(c)
-	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusUnauthorized, errResp)
+	var apiKey string
+	subdomain := c.Request().Header.Get("X-Subdomain")
+	if subdomain == "" {
+		apiKey, err = h.bindApiKey(c)
+		if err != nil {
+			errResp[msg] = err.Error()
+			return c.JSON(http.StatusUnauthorized, errResp)
+		}
+	} else {
+		apiKey = h.ipfsService.GetApiKeyByActiveGateway(ctx, subdomain)
+		if apiKey == "" {
+			errResp[msg] = "not found apiKey"
+			return c.JSON(http.StatusUnauthorized, errResp)
+		}
 	}
 
-	// FIXME: ipfs stats api
-	//if lErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); lErr != nil {
-	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(lErr))
-	//	errResp[msg] = "out of request limit"
-	//	return c.JSON(http.StatusBadRequest, errResp)
-	//}
-
-	ctx := c.Request().Context()
 	w := c.Response().Writer
 	r := c.Request()
 	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
 
 	if strings.Contains(pathStr, "ping") {
-		return c.String(http.StatusOK, "request"+pathStr)
+		return c.String(http.StatusOK, "pong")
 	}
 
 	if !h.ipfsService.CheckMethod(pathStr) {
 		errResp[msg] = "not supported method"
 		return c.JSON(http.StatusMethodNotAllowed, errResp)
+	}
+
+	// FIXME: ipfs need stats api
+	if lErr := h.JsonHandler.apiExist(c.Request().Context(), logger, apiKey); lErr != nil {
+		errResp[msg] = lErr.Error()
+		return c.JSON(http.StatusBadRequest, errResp)
 	}
 
 	var bwType uint8
@@ -265,8 +278,9 @@ func (h *IPFSHandler) proxyURL(pathStr, queryStr string) string {
 }
 
 func (h *IPFSHandler) ipfsMethod(apiKey string, path string) string {
-	pathPre := "/ipfs/v0/" + apiKey
-	pathStr := strings.TrimPrefix(strings.TrimPrefix(path, pathPre), "/api/v0")
+	pathStr := strings.TrimPrefix(path, "/ipfs/v0")
+	pathStr = strings.TrimPrefix(pathStr, "/api/v0")
+	pathStr = strings.TrimPrefix(pathStr, "/"+apiKey)
 	fmt.Println(pathStr)
 	return pathStr
 }

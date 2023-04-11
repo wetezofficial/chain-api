@@ -141,6 +141,22 @@ func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiK
 	return nil
 }
 
+func (h *JsonRpcHandler) apiExist(ctx context.Context, logger *zap.Logger, apiKey string) *jsonrpc.JsonRpcErr {
+	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, 1); err != nil {
+		if errors.Is(err, ratelimitv1.ApiKeyNotExistError) {
+			return jsonrpc.UnauthorizedErr
+		}
+
+		if errors.Is(err, ratelimitv1.ExceededRateLimitError) {
+			return nil
+		}
+
+		logger.Error("internal error", zap.Error(err))
+		return jsonrpc.NewInternalServerError(nil)
+	}
+	return nil
+}
+
 func (h *JsonRpcHandler) bindApiKey(c echo.Context) (string, error) {
 	var apiKey string
 	err := echo.PathParamsBinder(c).String("apiKey", &apiKey).BindError()

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"starnet/chain-api/pkg/response"
 
@@ -24,6 +25,7 @@ var _ serviceInterface.IpfsService = &IpfsService{}
 type IpfsService struct {
 	ipfsDao     daoInterface.IPFSDao
 	userDao     daoInterface.UserDao
+	projectDao  daoInterface.ProjectDao
 	rdb         redis.UniversalClient
 	cache       cache.Cache
 	allowMethod []string
@@ -31,7 +33,14 @@ type IpfsService struct {
 }
 
 // NewIpfsService .
-func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, rdb redis.UniversalClient, cache cache.Cache, logger *zap.Logger) *IpfsService {
+func NewIpfsService(
+	ipfsDao daoInterface.IPFSDao,
+	userDao daoInterface.UserDao,
+	projectDao daoInterface.ProjectDao,
+	rdb redis.UniversalClient,
+	cache cache.Cache,
+	logger *zap.Logger,
+) *IpfsService {
 	allowMethod := []string{
 		"/add",
 		"/block/get",
@@ -53,6 +62,7 @@ func NewIpfsService(ipfsDao daoInterface.IPFSDao, userDao daoInterface.UserDao, 
 	return &IpfsService{
 		ipfsDao:     ipfsDao,
 		userDao:     userDao,
+		projectDao:  projectDao,
 		rdb:         rdb,
 		cache:       cache,
 		allowMethod: allowMethod,
@@ -96,7 +106,6 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 
 // Add file info to the database
 func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []response.AddResp) error {
-
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
 	chainID := constant.ChainIPFS.ChainID
 	logger := s.logger.With(zap.String("apiKey", apiKey), zap.Int("userID", userID), zap.Uint8("chainId", chainID))
@@ -148,6 +157,35 @@ func (s *IpfsService) IncrIPFSUsage(ctx context.Context, apiKey, setKey string, 
 func (s *IpfsService) GetIpfsUserNoCache(ctx context.Context, apiKey string) (*models.IPFSUser, error) {
 	user := new(models.IPFSUser)
 	return user, s.ipfsDao.GetIPFSUser(s.getUserIDByAPIKey(ctx, apiKey), user)
+}
+
+func (s *IpfsService) GetApiKeyByActiveGateway(ctx context.Context, subdomain string) string {
+	var apiKey string
+	_ = s.cache.CacheFn(ctx,
+		cachekey.ApiKeyByGateway(subdomain),
+		&apiKey,
+		func() error {
+			gateway, err := s.ipfsDao.QueryGateway(subdomain)
+			if err != nil {
+				return err
+			}
+			var user models.IPFSUser
+			err = s.ipfsDao.GetIPFSUser(gateway.UserId, &user)
+			if err != nil {
+				return err
+			}
+			if user.ActiveGatewayId != gateway.ID {
+				return errors.New("gateway not active")
+			}
+			var p models.Project
+			if err = s.projectDao.DB().Where("user_id = ?", user.ID).Order("id ASC").First(&p).Error; err != nil {
+				return err
+			}
+			apiKey = p.APIKey
+			return nil
+		},
+	)
+	return apiKey
 }
 
 func (s *IpfsService) getUserFile(ctx context.Context, apiKey, cid string) (*models.IPFSFile, error) {
