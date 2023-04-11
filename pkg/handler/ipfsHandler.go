@@ -81,6 +81,10 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	r := c.Request()
 	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
 
+	if strings.Contains(pathStr, "ping") {
+		return c.String(http.StatusOK, "request"+pathStr)
+	}
+
 	if !h.ipfsService.CheckMethod(pathStr) {
 		errResp[msg] = "not supported method"
 		return c.JSON(http.StatusMethodNotAllowed, errResp)
