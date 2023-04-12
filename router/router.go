@@ -11,7 +11,8 @@ import (
 
 func NewRouter(app *app.App) *echo.Echo {
 	e := echo.New()
-	e.HideBanner = true
+	e.Debug = true
+	e.HideBanner = false
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())

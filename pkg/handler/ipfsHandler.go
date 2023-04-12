@@ -69,7 +69,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	var apiKey string
-	subdomain := c.Request().Header.Get("X-Subdomain")
+	subdomain := strings.Split(c.Request().Header.Get("Domain"), ".")[0]
 	if subdomain == "" {
 		apiKey, err = h.bindApiKey(c)
 		if err != nil {
@@ -97,11 +97,17 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return c.JSON(http.StatusMethodNotAllowed, errResp)
 	}
 
-	// FIXME: ipfs need stats api
+	// FIXME: ipfs test need stats api
 	if lErr := h.JsonHandler.apiExist(c.Request().Context(), logger, apiKey); lErr != nil {
 		errResp[msg] = lErr.Error()
 		return c.JSON(http.StatusBadRequest, errResp)
 	}
+
+	// if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+	// 	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+	// 	errResp[msg] = rlErr.Error()
+	// 	return c.JSON(http.StatusBadRequest, errResp)
+	// }
 
 	var bwType uint8
 

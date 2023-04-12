@@ -57,6 +57,8 @@ func NewIpfsService(
 		"/pin/update",
 
 		"/version",
+
+		// FIXME: will remove
 		"/stats/bw",
 	}
 	return &IpfsService{
