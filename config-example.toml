@@ -49,6 +49,18 @@ username = ""
 password = ""
 addr = "127.0.0.1:6379"
 
+[mysql]
+database = "starnet"
+host = "127.0.0.1"
+password = ""
+port = 3306
+user = "root"
+
+[ipfs_cluster]
+schemes = "http" # https
+host = "127.0.0.1"
+port = 5001
+
 [log]
 # debug, info, warn, error
 level = "debug"

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+
 	"starnet/chain-api/pkg/app"
 
 	"github.com/labstack/echo/v4"
@@ -10,7 +11,8 @@ import (
 
 func NewRouter(app *app.App) *echo.Echo {
 	e := echo.New()
-	e.HideBanner = true
+	e.Debug = true
+	e.HideBanner = false
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
@@ -68,6 +70,8 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.POST("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.Http)
 	e.GET("/irisnet/tendermint/v1/:apiKey", app.IRISnetHttpHandler.TendermintHttp)
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
+
+	e.Any("/ipfs/v0/*", app.IPFSHandler.Proxy)
 
 	return e
 }

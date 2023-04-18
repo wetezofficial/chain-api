@@ -93,7 +93,7 @@ func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods []strin
 	return &req, nil
 }
 
-func (h *JsonRpcHandler) pathBind(apiKey, requestURI string, blackMethods []string) (*jsonrpc.TenderMintRequest, *jsonrpc.JsonRpcErr) {
+func (h *JsonRpcHandler) tendermintPathBind(apiKey, requestURI string, blackMethods []string) (*jsonrpc.TenderMintRequest, *jsonrpc.JsonRpcErr) {
 	uriList := strings.Split(requestURI, "/")
 	pathAllStr := uriList[len(uriList)-1]
 	urlQueryList := strings.Split(pathAllStr, "?")
@@ -141,6 +141,16 @@ func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiK
 	return nil
 }
 
+// TODO: will remove
+func (h *JsonRpcHandler) apiExist(ctx context.Context, logger *zap.Logger, apiKey string) *jsonrpc.JsonRpcErr {
+	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, 1); err != nil {
+		if errors.Is(err, ratelimitv1.ApiKeyNotExistError) {
+			return jsonrpc.UnauthorizedErr
+		}
+	}
+	return nil
+}
+
 func (h *JsonRpcHandler) bindApiKey(c echo.Context) (string, error) {
 	var apiKey string
 	err := echo.PathParamsBinder(c).String("apiKey", &apiKey).BindError()
@@ -176,7 +186,6 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-
 	logger.Debug("new request", zap.ByteString("rawreq", rawreq))
 	req, vErr := h.bind(apiKey, rawreq, h.httpBlackMethods)
 	if vErr != nil {
@@ -216,7 +225,7 @@ func (h *JsonRpcHandler) TendermintHttp(c echo.Context) error {
 		return err
 	}
 
-	tenderMintRequest, vErr := h.pathBind(apiKey, c.Request().RequestURI, h.httpBlackMethods)
+	tenderMintRequest, vErr := h.tendermintPathBind(apiKey, c.Request().RequestURI, h.httpBlackMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
 	}

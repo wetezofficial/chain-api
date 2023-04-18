@@ -4,3 +4,6 @@ build
 .fleet
 log
 *.log
+chain-api
+.gitignore
+cmd/chainapi/__debug_bin

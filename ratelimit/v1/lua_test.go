@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"starnet/starnet/dao"
+	"starnet/starnet/models"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +19,9 @@ func TestCount(t *testing.T) {
 	t.Parallel()
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr:     "localhost:6379",
+		Password: "xxx",
+		DB:       12,
 	})
 	ctx := context.TODO()
 
@@ -31,7 +34,18 @@ func TestCount(t *testing.T) {
 		assert.Nil(t, err)
 
 		// Initialize configuration
-		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		testPlan := models.Plan{
+			DayLimit:     uint32(dayQuota),
+			TotalStorage: 1000000,
+			TransferUp:   1000000,
+			TransferDown: 1000000,
+			SecondLimit:  uint16(secQuota),
+			ChainID:      chainID,
+		}
+		err = rateLimitDao.SetQuota(apikey, int(chainID), testPlan)
+		assert.Nil(t, err)
+
+		_, err = rateLimitDao.GetIpfsLimit(apikey, int(chainID))
 		assert.Nil(t, err)
 
 		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
@@ -80,7 +94,15 @@ func TestRevert(t *testing.T) {
 		assert.Nil(t, err)
 
 		// Initialize configuration
-		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		testPlan := models.Plan{
+			DayLimit:     uint32(dayQuota),
+			TotalStorage: 1000000,
+			TransferUp:   1000000,
+			TransferDown: 1000000,
+			SecondLimit:  uint16(secQuota),
+			ChainID:      chainID,
+		}
+		err = rateLimitDao.SetQuota(apikey, int(chainID), testPlan)
 		assert.Nil(t, err)
 
 		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())
@@ -145,7 +167,15 @@ func TestExceeded(t *testing.T) {
 		assert.Nil(t, err)
 
 		// Initialize configuration
-		err = rateLimitDao.SetQuota(apikey, int(chainID), secQuota, dayQuota)
+		testPlan := models.Plan{
+			DayLimit:     uint32(dayQuota),
+			TotalStorage: 1000000,
+			TransferUp:   1000000,
+			TransferDown: 1000000,
+			SecondLimit:  uint16(secQuota),
+			ChainID:      chainID,
+		}
+		err = rateLimitDao.SetQuota(apikey, int(chainID), testPlan)
 		assert.Nil(t, err)
 
 		_, err = rateLimitDao.GetDayUsage(apikey, int(chainID), time.Now())

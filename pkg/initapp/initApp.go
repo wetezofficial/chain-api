@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"log"
 
+	"starnet/chain-api/pkg/db"
+	"starnet/chain-api/service"
+	"starnet/starnet/pkg/cache"
+
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
@@ -22,13 +26,9 @@ func NewApp(configFile string) *app.App {
 		log.Fatalf("LoadConfig: %s \n", err.Error())
 	}
 
-	logger, err := config.NewLogger(cfg)
-	if err != nil {
-		log.Fatalf("NewLogger: %s \n", err.Error())
-	}
+	logger := config.NewLogger(cfg)
 
 	rdb := starnetRedis.New(cfg.Redis)
-
 	var rateLimitDao daoInterface.RateLimitDao = dao.NewRateLimitDao(rdb)
 	apiKeysWhitelist, err := rateLimitDao.GetApiKeysWhitelist()
 	if err != nil {
@@ -36,7 +36,20 @@ func NewApp(configFile string) *app.App {
 	}
 	fmt.Println("api keys whitelist:", apiKeysWhitelist)
 
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, apiKeysWhitelist)
+	_db, err := db.NewDB(cfg, logger)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	ipfsDao := dao.NewIPFSDao(_db)
+	userDao := dao.NewUserDao(_db)
+	projectDao:=dao.NewProjectDao(_db)
+
+	rdbCache := cache.NewRedisCache(rdb, "chain:")
+
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao,projectDao, rdb, rdbCache, logger)
+
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
 	if err != nil {
 		logger.Fatal("fail to get rate limiter", zap.Error(err))
 	}
@@ -45,7 +58,9 @@ func NewApp(configFile string) *app.App {
 		Config:      cfg,
 		Logger:      logger,
 		Rdb:         rdb,
+		DB:          _db,
 		RateLimiter: rateLimiter,
+		IPFSSrv:     ipfsSrv,
 	}
 
 	initFns := []func(app *app.App) error{
@@ -62,6 +77,7 @@ func NewApp(configFile string) *app.App {
 		initGravityHandler,
 		initOKCHandler,
 		initIRISnetHandler,
+		initIPFSClient,
 	}
 
 	for _, fn := range initFns {

@@ -2,14 +2,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/urfave/cli/v2"
 	"os"
+
 	"starnet/chain-api/pkg/initapp"
 	"starnet/starnet"
+
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
-	os.Setenv("TZ", "UTC")
+	err := os.Setenv("TZ", "UTC")
+	if err != nil {
+		panic(err)
+	}
 
 	cliApp := &cli.App{
 		Name:  "chainapi",
@@ -37,5 +42,5 @@ func main() {
 		},
 	}
 
-	cliApp.Run(os.Args)
+	_ = cliApp.Run(os.Args)
 }

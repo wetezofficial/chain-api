@@ -9,6 +9,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"starnet/chain-api/config"
+	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/initapp/chainlinktest"
+	"starnet/chain-api/pkg/jsonrpc"
+	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+	"starnet/chain-api/router"
+	"starnet/starnet/constant"
+	"starnet/starnet/dao"
+	daoInterface "starnet/starnet/dao/interface"
+	"starnet/starnet/models"
+	starnetRedis "starnet/starnet/pkg/redis"
+
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
@@ -17,23 +37,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"io/ioutil"
-	"math/big"
-	"net/http"
-	"net/http/httptest"
-	"starnet/chain-api/config"
-	"starnet/chain-api/pkg/app"
-	"starnet/chain-api/pkg/initapp/chainlinktest"
-	"starnet/chain-api/pkg/jsonrpc"
-	"starnet/chain-api/ratelimit/v1"
-	"starnet/chain-api/router"
-	"starnet/starnet/constant"
-	"starnet/starnet/dao"
-	"starnet/starnet/dao/interface"
-	"starnet/starnet/pkg/redis"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestHsc(t *testing.T) {
@@ -226,15 +229,14 @@ func (s *hscRpcSuite) SetupSuite() {
 	s.chainID = int(constant.ChainHSC.ChainID)
 	s.loadConfig()
 
-	logger, err := config.NewLogger(s.cfg)
-	assert.Nil(s.T(), err)
+	logger := config.NewLogger(s.cfg)
 
 	rdb := starnetRedis.New(s.cfg.Redis)
 
 	var rateLimitDao daoInterface.RateLimitDao = dao.NewRateLimitDao(rdb)
 	s.rateLimitDao = rateLimitDao
 
-	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, logger, []string{whitelistApikey})
+	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, nil, logger, []string{whitelistApikey})
 	assert.Nil(s.T(), err, "fail to get rate limiter")
 
 	_app := app.App{
@@ -301,7 +303,11 @@ FnBegin:
 	assert.Nil(s.T(), err)
 
 	// Initialize configuration
-	err = s.rateLimitDao.SetQuota(apikey, int(s.chainID), secQuota, dayQuota)
+	err = s.rateLimitDao.SetQuota(apikey, int(s.chainID), models.Plan{
+		DayLimit:    uint32(dayQuota),
+		SecondLimit: uint16(secQuota),
+		ChainID:     uint8(s.chainID),
+	})
 	assert.Nil(s.T(), err)
 
 	_, err = s.rateLimitDao.GetDayUsage(apikey, int(s.chainID), t)

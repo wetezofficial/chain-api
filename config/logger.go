@@ -1,23 +1,111 @@
 package config
 
-import "go.uber.org/zap"
+import (
+	"fmt"
+	"os"
+	"path"
+	"time"
 
-func NewLogger(c *Config, opts ...zap.Option) (*zap.Logger, error) {
+	zaprotatelogs "github.com/lestrrat-go/file-rotatelogs"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+var (
+	level         zapcore.Level
+	isDevelopment bool
+)
+
+func NewLogger(c *Config) (logger *zap.Logger) {
 	lc := c.Log
-	zapCfg := zap.NewProductionConfig()
+	isDevelopment = c.Log.IsDevelopment
+
 	switch lc.Level {
 	case "debug":
-		zapCfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+		level = zap.DebugLevel
 	case "info":
-		zapCfg.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+		level = zap.InfoLevel
 	case "warn":
-		zapCfg.Level = zap.NewAtomicLevelAt(zap.WarnLevel)
+		level = zap.WarnLevel
 	case "error":
-		zapCfg.Level = zap.NewAtomicLevelAt(zap.ErrorLevel)
+		level = zap.ErrorLevel
+	case "dpanic":
+		level = zap.DPanicLevel
+	case "panic":
+		level = zap.PanicLevel
+	case "fatal":
+		level = zap.FatalLevel
+	default:
+		level = zap.InfoLevel
 	}
-	zapCfg.Development = lc.IsDevelopment
-	zapCfg.OutputPaths = []string{lc.LogFile, "stdout"}
-	zapCfg.ErrorOutputPaths = []string{lc.LogFile, "stdout"}
 
-	return zapCfg.Build(opts...)
+	if level == zap.DebugLevel || level > zap.ErrorLevel {
+		logger = zap.New(getEncoderCore(), zap.AddStacktrace(level))
+	} else {
+		logger = zap.New(getEncoderCore())
+	}
+
+	logger = logger.WithOptions(zap.AddCaller())
+
+	return logger
+}
+
+// getEncoderConfig 获取 zapcore.EncoderConfig
+func getEncoderConfig() (config zapcore.EncoderConfig) {
+	config = zapcore.EncoderConfig{
+		MessageKey:     "message",
+		LevelKey:       "level",
+		TimeKey:        "time",
+		NameKey:        "logger",
+		CallerKey:      "caller",
+		LineEnding:     zapcore.DefaultLineEnding,
+		EncodeLevel:    zapcore.LowercaseLevelEncoder,
+		EncodeTime:     CustomTimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.FullCallerEncoder,
+	}
+	return config
+}
+
+// getEncoder 获取 zap core.Encoder
+func getEncoder() zapcore.Encoder {
+	return zapcore.NewConsoleEncoder(getEncoderConfig())
+}
+
+// getEncoderCore 获取 Encoder 的 zapcore.Core
+func getEncoderCore() (core zapcore.Core) {
+	writer, err := getWriteSyncer()
+	if err != nil {
+		fmt.Printf("Get Write Syncer Failed err:%v \n", err.Error())
+		return
+	}
+
+	if isDevelopment {
+		return zapcore.NewCore(getEncoder(), writer, level)
+	}
+
+	return zapcore.NewTee(
+		zapcore.NewCore(getEncoder(), writer, zap.ErrorLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.DPanicLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.PanicLevel),
+		zapcore.NewCore(getEncoder(), writer, zap.FatalLevel),
+		zapcore.NewCore(getEncoder(), writer, level),
+	)
+}
+
+// CustomTimeEncoder .
+func CustomTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(t.Format("starnet_chain_api:" + "2006/01/02 - 15:04:05.000"))
+}
+
+func getWriteSyncer() (zapcore.WriteSyncer, error) {
+	// file rotate logs split log
+	fileWriter, err := zaprotatelogs.New(
+		path.Join("log", "starnet_chain_api-%Y-%m-%d.log"),
+		zaprotatelogs.WithRotationTime(24*time.Hour),
+	)
+	if isDevelopment {
+		return zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), zapcore.AddSync(fileWriter)), err
+	}
+	return zapcore.NewMultiWriteSyncer(zapcore.AddSync(fileWriter)), err
 }

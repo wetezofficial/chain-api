@@ -3,16 +3,19 @@ package app
 import (
 	"starnet/chain-api/config"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+	serviceInterface "starnet/chain-api/service/interface"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // App 所有的依赖信息都在这里
 type App struct {
 	Config      *config.Config
 	Logger      *zap.Logger
+	DB          *gorm.DB
 	Rdb         redis.UniversalClient
 	HttpServer  *echo.Echo
 	RateLimiter *ratelimitv1.RateLimiter
@@ -59,6 +62,11 @@ type App struct {
 	// irisnet
 	IRISnetHttpHandler HttpHandler
 	IRISnetWsHandler   WsHandler
+
+	// ipfs
+	IPFSHandler IPFSHandler
+
+	IPFSSrv serviceInterface.IpfsService
 }
 
 func (a *App) Start() {

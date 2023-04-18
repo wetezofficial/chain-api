@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"starnet/chain-api/pkg/utils"
+	"starnet/chain-api/service"
+	"starnet/starnet/cachekey"
+
 	"github.com/go-redis/redis/v8"
+
 	"go.uber.org/zap"
 )
 
@@ -18,13 +23,15 @@ const (
 
 type RateLimiter struct {
 	rdb       redis.UniversalClient
+	ipfsSrv   *service.IpfsService
 	logger    *zap.Logger
 	whitelist []string
 }
 
-func NewRateLimiter(rdb redis.UniversalClient, logger *zap.Logger, whitelist []string) (*RateLimiter, error) {
+func NewRateLimiter(rdb redis.UniversalClient, ipfsSrv *service.IpfsService, logger *zap.Logger, whitelist []string) (*RateLimiter, error) {
 	return &RateLimiter{
 		rdb:       rdb,
+		ipfsSrv:   ipfsSrv,
 		logger:    logger,
 		whitelist: whitelist,
 	}, nil
@@ -83,10 +90,21 @@ func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n
 		return nil
 	}
 
-	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, time.Now(), n, true)
+	t := time.Now()
+
+	res, err := RedisAllow(ctx, l.rdb, chainID, apiKey, t, n, true)
 	if err != nil {
 		logger.Error("failed to run rate limit script", zap.Error(err))
 		return err
+	}
+
+	// add chain request count
+	if res == 1 && n > 0 {
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetChainHourKey(chainID, t), int64(n), time.Minute*90, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetChainDayKey(chainID, t), int64(n), time.Hour*36, logger)
+
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetTotalQuotaHourKey(t), int64(n), time.Minute*90, logger)
+		utils.IncreaseAndSetExpire(ctx, l.rdb, cachekey.GetTotalQuotaDayKey(t), int64(n), time.Hour*36, logger)
 	}
 
 	if res == NotExist {
