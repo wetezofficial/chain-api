@@ -97,17 +97,11 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return c.JSON(http.StatusMethodNotAllowed, errResp)
 	}
 
-	// FIXME: ipfs test need stats api
-	if lErr := h.JsonHandler.apiExist(c.Request().Context(), logger, apiKey); lErr != nil {
-		errResp[msg] = lErr.Error()
+	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
+		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+		errResp[msg] = rlErr.Error()
 		return c.JSON(http.StatusBadRequest, errResp)
 	}
-
-	// if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-	// 	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-	// 	errResp[msg] = rlErr.Error()
-	// 	return c.JSON(http.StatusBadRequest, errResp)
-	// }
 
 	var bwType uint8
 
@@ -287,6 +281,5 @@ func (h *IPFSHandler) ipfsMethod(apiKey string, path string) string {
 	pathStr := strings.TrimPrefix(path, "/ipfs/v0")
 	pathStr = strings.TrimPrefix(pathStr, "/api/v0")
 	pathStr = strings.TrimPrefix(pathStr, "/"+apiKey)
-	fmt.Println(pathStr)
 	return pathStr
 }
