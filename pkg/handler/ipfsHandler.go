@@ -31,6 +31,7 @@ func NewIPFSHandler(
 	app *app.App,
 ) *IPFSHandler {
 	return &IPFSHandler{
+		// without Methods & proxy
 		JsonHandler: NewJsonRpcHandler(chain, nil, nil, nil, nil, app),
 		ipfsService: app.IPFSSrv,
 		endpoint:    fmt.Sprintf("%s://%s:%d", app.Config.IPFSCluster.Schemes, app.Config.IPFSCluster.Host, app.Config.IPFSCluster.Port),
@@ -43,7 +44,7 @@ func (h *IPFSHandler) newLogger(c echo.Context) *zap.Logger {
 }
 
 const (
-	ipfsAPIKeyIndex = 4
+	ipfsAPIKeyIndex = 3
 	msg             = "message"
 	lengthHeader    = "Content-Length"
 )
@@ -259,6 +260,11 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	}
 
+	// TODO: some method can cache
+	// version
+	// object/get
+	// block state
+
 	w.WriteHeader(targetResp.StatusCode)
 	_, err = w.Write(body)
 	if err != nil {
@@ -278,8 +284,8 @@ func (h *IPFSHandler) proxyURL(pathStr, queryStr string) string {
 }
 
 func (h *IPFSHandler) ipfsMethod(apiKey string, path string) string {
-	pathStr := strings.TrimPrefix(path, "/ipfs/v0")
-	pathStr = strings.TrimPrefix(pathStr, "/api/v0")
+	pathStr := strings.TrimPrefix(path, "/ipfs")
 	pathStr = strings.TrimPrefix(pathStr, "/"+apiKey)
+	pathStr = strings.TrimPrefix(pathStr, "/api/v0")
 	return pathStr
 }
