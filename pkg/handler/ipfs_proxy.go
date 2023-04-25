@@ -1,14 +1,12 @@
 package handler
 
 import (
-	"context"
 	"io"
 	"net/http"
 
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
-	"starnet/starnet/models"
 
 	"github.com/labstack/echo/v4"
 	"github.com/spf13/cast"
@@ -20,9 +18,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	var err error
-	errResp := map[string]interface{}{
-		msg: nil,
-	}
+	errResp := map[string]interface{}{msg: ""}
 
 	apiKey, pathStr, _, done := h.requestCheck(c, errResp, logger)
 	if done {
@@ -36,6 +32,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	var pinAddParam request.PinParam
 	var pinUpdateParam request.UpdatePinParam
 
+	// some user quota checks and logical preprocessing.
 	switch pathStr {
 	case "/add", "/dag/put", "/block/put":
 		bwType = ratelimitv1.BandWidthUpload
@@ -47,10 +44,9 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	case "/dag/get", "/get", "/cat", "/block/get":
 		// get object state and check user limit
 		cid := c.Request().URL.Query().Get("arg")
-		stats, err := h.getIPFSObjectsStats(cid)
+		stats, err := h.getIPFSObjectsStats(ctx, cid)
 		if err != nil {
-			errResp[msg] = "get ipfs stats error"
-			return c.JSON(http.StatusInternalServerError, errResp)
+			return h.echoReturnWithMsg(c, http.StatusInternalServerError, errResp, "get ipfs object stats error")
 		}
 		bwType = ratelimitv1.BandWidthDownload
 		bwSize = int64(stats.CumulativeSize)
@@ -61,10 +57,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	case "/pin/ls":
 		var lsParam request.PinLsParam
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
-			errMsg := "read the pin ls param failed"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
+			return h.echoReturnWithMsg(c, http.StatusBadRequest, errResp, "read the pin ls param failed")
 		}
 		if lsParam.Arg == "" {
 			return c.JSON(http.StatusOK, response.PinListMapResult{
@@ -73,12 +66,8 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	case "/pin/add":
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &pinAddParam); err != nil || pinAddParam.Arg == "" {
-			errMsg := "read the pin add param failed"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
+			return h.echoReturnWithMsg(c, http.StatusBadRequest, errResp, "read the pin add param failed")
 		}
-
 		// config bwType bwSize
 		var shouldReturn bool
 		bwType, bwSize, pinAddFileList, shouldReturn, _ = h.pinAddFile(c, apiKey, pinAddParam.Arg, logger, errResp)
@@ -87,10 +76,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		}
 	case "/pin/update":
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &pinUpdateParam); err != nil || len(pinUpdateParam.Arg) < 2 {
-			errMsg := "pin update param error"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
+			return h.echoReturnWithMsg(c, http.StatusBadRequest, errResp, "pin update param error")
 		}
 		var shouldReturn bool
 		bwType, bwSize, pinAddFileList, shouldReturn, _ = h.pinAddFile(c, apiKey, pinUpdateParam.Arg[1], logger, errResp)
@@ -115,8 +101,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	// Copy the response body to the original response
 	body, err := io.ReadAll(targetResp.Body)
 	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusInternalServerError, errResp)
+		return h.echoReturnWithMsg(c, http.StatusInternalServerError, errResp, err.Error())
 	}
 
 	// Copy the response headers to the original response
@@ -130,6 +115,7 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 		return h.returnIpfsResult(c, targetResp, body, errResp)
 	}
 
+	// database operation
 	switch pathStr {
 	case "/add":
 		addResultList, err, addParam := h.getAddFileList(c, body, logger)
@@ -139,21 +125,18 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 			}
 		}()
 	case "/pin/add":
-		h.pinHook(pinAddFileList, ctx, apiKey, logger, pinAddParam.Arg)
+		h.pinHook(ctx, apiKey, pinAddParam.Arg, pinAddFileList, logger)
 	case "/pin/update":
-		h.pinHook(pinAddFileList, ctx, apiKey, logger, pinUpdateParam.Arg[1])
+		h.pinHook(ctx, apiKey, pinUpdateParam.Arg[1], pinAddFileList, logger)
 		if pinUpdateParam.Unpin {
-			h.ipfsService.UnPinObject(ctx, apiKey, pinUpdateParam.Arg[0])
+			h.unPinDBWithPined(ctx, apiKey, pinUpdateParam.Arg[0], logger)
 		}
 	case "/pin/rm":
 		var pinRmParam request.PinRmParam
 		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &pinRmParam); err != nil || pinRmParam.Arg == "" {
-			errMsg := "pin rm param error"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
+			return h.echoReturnWithMsg(c, http.StatusBadRequest, errResp, "pin rm param error")
 		}
-		h.ipfsService.UnPinObject(ctx, apiKey, pinRmParam.Arg)
+		h.unPinDBWithPined(ctx, apiKey, pinRmParam.Arg, logger)
 	}
 
 	// update the user transfer up down usage
@@ -170,18 +153,4 @@ func (h *IPFSHandler) Proxy(c echo.Context) error {
 	}
 
 	return h.returnIpfsResult(c, targetResp, body, errResp)
-}
-
-func (h *IPFSHandler) pinHook(pinAddFileList []response.AddResp, ctx context.Context, apiKey string, logger *zap.Logger, pinCid string) {
-	if len(pinAddFileList) > 0 {
-		if err := h.ipfsService.Add(ctx, apiKey, request.AddParam{
-			PinStatus: models.PinStatusPin,
-		}, pinAddFileList); err != nil {
-			logger.Error("save pin upload file to database failed", zap.Error(err))
-		}
-	} else {
-		if err := h.ipfsService.PinObject(ctx, apiKey, pinCid); err != nil {
-			logger.Error("save pin status file to database failed", zap.Error(err))
-		}
-	}
 }

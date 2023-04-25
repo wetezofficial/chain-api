@@ -122,6 +122,14 @@ func (s *IpfsService) GetUserIpfsFile(ctx context.Context, apiKey, cid string) (
 	return file, nil
 }
 
+func (s *IpfsService) GetIpfsPinFile(ctx context.Context, cid string) (models.IPFSFile, error) {
+	var file models.IPFSFile
+	if err := s.ipfsDao.GetPinFile(cid, models.PinStatusPin, &file); err != nil {
+		return models.IPFSFile{}, err
+	}
+	return file, nil
+}
+
 func (s *IpfsService) PinObject(ctx context.Context, apiKey, cid string) error {
 	return s.ipfsDao.SetUserFilePinStatus(s.getUserIDByAPIKey(ctx, apiKey), models.PinStatusPin, cid)
 }

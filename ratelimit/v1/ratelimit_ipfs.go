@@ -2,7 +2,6 @@ package ratelimitv1
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -48,7 +47,7 @@ func (l *RateLimiter) BandwidthHook(
 		// update transfer down user usage
 		l.ipfsSrv.IncrIPFSUsage(ctx, apiKey, cachekey.IpfsLimitTransferDownSetKey(), chainID, fileSize)
 	default:
-		return errors.New("unsupported type")
+		logger.Error("unsupported type")
 	}
 
 	return nil

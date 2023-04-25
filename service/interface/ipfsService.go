@@ -12,6 +12,7 @@ type IpfsService interface {
 	Add(ctx context.Context, apiKey string, addParam request.AddParam, fileList []response.AddResp) error
 	ListUserFile(ctx context.Context, apiKey string, files *[]models.IPFSFile) error
 	GetUserIpfsFile(ctx context.Context, apiKey, cid string) (models.IPFSFile, error)
+	GetIpfsPinFile(ctx context.Context, cid string) (models.IPFSFile, error)
 	PinObject(ctx context.Context, apiKey, cid string) error
 	UnPinObject(ctx context.Context, apiKey, cid string) error
 	CheckMethod(pathStr string) bool
