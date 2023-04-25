@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"starnet/chain-api/pkg/request"
 
 	"starnet/chain-api/pkg/response"
 
@@ -57,6 +58,15 @@ func NewIpfsService(
 		"/pin/update",
 
 		"/version",
+
+		// "/object/get",
+		// "/dag/import",
+
+		// TODO: some method can cache
+		// version
+		// object/get
+		// block state
+
 	}
 	return &IpfsService{
 		ipfsDao:     ipfsDao,
@@ -103,20 +113,47 @@ func (s *IpfsService) ListUserFile(ctx context.Context, apiKey string, files *[]
 	)
 }
 
+func (s *IpfsService) GetUserIpfsFile(ctx context.Context, apiKey, cid string) (models.IPFSFile, error) {
+	userID := s.getUserIDByAPIKey(ctx, apiKey)
+	var file models.IPFSFile
+	if err := s.ipfsDao.GetUserFile(userID, cid, &file); err != nil {
+		return models.IPFSFile{}, err
+	}
+	return file, nil
+}
+
+func (s *IpfsService) PinObject(ctx context.Context, apiKey, cid string) error {
+	return s.ipfsDao.SetUserFilePinStatus(s.getUserIDByAPIKey(ctx, apiKey), models.PinStatusPin, cid)
+}
+
+func (s *IpfsService) UnPinObject(ctx context.Context, apiKey, cid string) error {
+	return s.ipfsDao.SetUserFilePinStatus(s.getUserIDByAPIKey(ctx, apiKey), models.PinStatusUnPin, cid)
+}
+
 // Add file info to the database
-func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []response.AddResp) error {
+func (s *IpfsService) Add(ctx context.Context, apiKey string, addParam request.AddParam, fileList []response.AddResp) error {
 	userID := s.getUserIDByAPIKey(ctx, apiKey)
 	chainID := constant.ChainIPFS.ChainID
 	logger := s.logger.With(zap.String("apiKey", apiKey), zap.Int("userID", userID), zap.Uint8("chainId", chainID))
 
 	var dbFiles []*models.IPFSFile
+	var dirSize uint64
+	if addParam.WrapWithDirectory {
+		dirSize = cast.ToUint64(fileList[len(fileList)-1].Size)
+	}
 	for _, v := range fileList {
-		dbFiles = append(dbFiles, &models.IPFSFile{
-			UserId:   userID,
-			FileSize: cast.ToUint64(v.Size),
-			FileName: v.Name,
-			CID:      v.Hash,
-		})
+		dbFile := &models.IPFSFile{
+			PinStatus: addParam.PinStatus,
+			UserId:    userID,
+			FileSize:  cast.ToUint64(v.Size),
+			FileName:  v.Name,
+			CID:       v.Hash,
+		}
+		if addParam.WrapWithDirectory {
+			dbFile.WrapDirName = fileList[len(fileList)-1].Name
+			dbFile.WrapWithDirCid = fileList[len(fileList)-1].Hash
+		}
+		dbFiles = append(dbFiles, dbFile)
 	}
 	var addStorage uint64
 	for _, v := range dbFiles {
@@ -129,6 +166,8 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 		}
 	}
 	if addStorage > 0 {
+		// remove dir ipfs file size
+		addStorage -= dirSize
 		_, err := s.ipfsDao.IncrUserStorage(userID, addStorage)
 		if err == nil {
 			s.IncrIPFSUsage(
@@ -140,7 +179,8 @@ func (s *IpfsService) Add(ctx context.Context, apiKey string, fileList []respons
 			)
 		}
 	}
-	return s.ipfsDao.BatchSaveFiles(dbFiles)
+
+	return s.ipfsDao.BatchFistOrCreateFiles(dbFiles)
 }
 
 func (s *IpfsService) IncrIPFSUsage(ctx context.Context, apiKey, setKey string, chainID uint8, addVal int64) {

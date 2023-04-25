@@ -7,6 +7,7 @@ type AddParam struct {
 	WrapWithDirectory bool   `json:"wrap-with-directory"  query:"wrap-with-directory"`
 	Hidden            bool   `json:"hidden"  query:"hidden"`
 	Pin               bool   `json:"pin"  query:"pin"`
+	PinStatus         uint8  `json:"-"  query:"-"`
 	Nocopy            bool   `json:"nocopy"  query:"nocopy"`
 	CidVersion        int    `json:"cid-version"  query:"cid-version"`
 	Chunker           string `json:"chunker"  query:"chunker"` // string
@@ -40,4 +41,9 @@ type PinLsParam struct {
 type UpdatePinParam struct {
 	Unpin bool     `json:"unpin"  query:"unpin"`
 	Arg   []string `json:"arg" query:"arg"`
+}
+
+type PinRmParam struct {
+	Recursive bool   `json:"recursive"  query:"recursive"`
+	Arg       string `json:"arg" query:"arg"`
 }

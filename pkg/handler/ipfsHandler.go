@@ -1,16 +1,19 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
+	"mime/multipart"
 	"net/http"
-	"strings"
-
-	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
+	"starnet/starnet/models"
+	"strings"
+
+	"starnet/chain-api/pkg/app"
 	serviceInterface "starnet/chain-api/service/interface"
 	"starnet/starnet/constant"
 
@@ -24,6 +27,7 @@ type IPFSHandler struct {
 	JsonHandler *JsonRpcHandler
 	ipfsService serviceInterface.IpfsService
 	endpoint    string
+	httpClient  *http.Client
 }
 
 func NewIPFSHandler(
@@ -35,6 +39,7 @@ func NewIPFSHandler(
 		JsonHandler: NewJsonRpcHandler(chain, nil, nil, nil, nil, app),
 		ipfsService: app.IPFSSrv,
 		endpoint:    fmt.Sprintf("%s://%s:%d", app.Config.IPFSCluster.Schemes, app.Config.IPFSCluster.Host, app.Config.IPFSCluster.Port),
+		httpClient:  &http.Client{},
 	}
 }
 
@@ -60,219 +65,36 @@ func (h *IPFSHandler) bindApiKey(c echo.Context) (string, error) {
 	return pathList[ipfsAPIKeyIndex-1], nil
 }
 
-func (h *IPFSHandler) Proxy(c echo.Context) error {
-	logger := h.newLogger(c)
-
-	var err error
-	errResp := map[string]interface{}{
-		msg: nil,
-	}
-	ctx := c.Request().Context()
-
-	var apiKey string
-	subdomain := strings.Split(c.Request().Header.Get("Domain"), ".")[0]
-	if subdomain == "" {
-		apiKey, err = h.bindApiKey(c)
-		if err != nil {
-			errResp[msg] = err.Error()
-			return c.JSON(http.StatusUnauthorized, errResp)
-		}
-	} else {
-		apiKey = h.ipfsService.GetApiKeyByActiveGateway(ctx, subdomain)
-		if apiKey == "" {
-			errResp[msg] = "not found apiKey"
-			return c.JSON(http.StatusUnauthorized, errResp)
-		}
-	}
-
+func (h *IPFSHandler) returnIpfsResult(c echo.Context, targetResp *http.Response, body []byte, errResp map[string]interface{}) error {
 	w := c.Response().Writer
-	r := c.Request()
-	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
-
-	if strings.Contains(pathStr, "ping") {
-		return c.String(http.StatusOK, "pong")
-	}
-
-	if !h.ipfsService.CheckMethod(pathStr) {
-		errResp[msg] = "not supported method"
-		return c.JSON(http.StatusMethodNotAllowed, errResp)
-	}
-
-	if rlErr := h.JsonHandler.rateLimit(c.Request().Context(), logger, apiKey, 1); rlErr != nil {
-		logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
-		errResp[msg] = rlErr.Error()
-		return c.JSON(http.StatusBadRequest, errResp)
-	}
-
-	var bwType uint8
-
-	switch pathStr {
-	case "/add", "/dag/put", "/block/put":
-		bwType = ratelimitv1.BandWidthUpload
-	case "/dag/get", "/get", "/cat", "/block/get":
-		bwType = ratelimitv1.BandWidthDownload
-		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
-			ctx,
-			apiKey,
-			constant.ChainIPFS.ChainID,
-			h.JsonHandler.logger,
-			0,
-			bwType,
-		); err != nil {
-			errResp[msg] = err.Error()
-			return c.JSON(http.StatusInternalServerError, errResp)
-		}
-	case "/pin/ls":
-		var lsParam request.PinLsParam
-		if err := (&echo.DefaultBinder{}).BindQueryParams(c, &lsParam); err != nil {
-			errMsg := "read the pin ls param failed"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
-		}
-		if lsParam.Arg == "" {
-			return c.JSON(http.StatusOK, response.PinListMapResult{
-				Keys: map[string]response.PinResp{},
-			})
-		}
-	case "/pin/add", "/pin/rm":
-		pinParam := new(request.PinParam)
-		if err := (&echo.DefaultBinder{}).BindQueryParams(c, pinParam); err != nil {
-			err = fmt.Errorf("read the add param failed")
-			logger.Error(err.Error(), zap.Error(err))
-			errResp[msg] = err.Error()
-			return c.JSON(http.StatusBadRequest, errResp)
-		}
-		if !h.ipfsService.CheckUserCid(ctx, apiKey, pinParam.Arg) {
-			err = fmt.Errorf("can`t operation this objects")
-			errResp[msg] = err.Error()
-			return c.JSON(http.StatusForbidden, errResp)
-		}
-	case "/pin/update":
-		updatePinParam := new(request.UpdatePinParam)
-		if err := (&echo.DefaultBinder{}).BindQueryParams(c, updatePinParam); err != nil {
-			errMsg := "read the update param failed"
-			logger.Error(errMsg, zap.Error(err))
-			errResp[msg] = errMsg
-			return c.JSON(http.StatusBadRequest, errResp)
-		}
-		for _, arg := range updatePinParam.Arg {
-			if !h.ipfsService.CheckUserCid(ctx, apiKey, arg) {
-				errResp[msg] = "can`t operation this objects"
-				return c.JSON(http.StatusForbidden, errResp)
-			}
-		}
-	}
-
-	// Create a new HTTP client
-	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
-
-	// Create a new request to the target URL
-	targetReq, err := http.NewRequest(r.Method, requestURL, r.Body)
-	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusInternalServerError, errResp)
-	}
-
-	// Copy the request headers to the new request
-	targetReq.Header = r.Header
-	targetReq.Header["User-Agent"] = nil
-	targetReq.Header["Referer"] = nil
-	targetReq.Header["Origin"] = nil
-
-	// Forward the request to the target URL
-	client := &http.Client{}
-	targetResp, err := client.Do(targetReq)
-	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusBadRequest, errResp)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Error("close the targetResp err:", zap.Error(err))
-		}
-	}(targetResp.Body)
-
-	// Copy the response headers to the original response
-	for k, v := range targetResp.Header {
-		w.Header()[k] = v
-	}
-
-	// Copy the response body to the original response
-	body, err := io.ReadAll(targetResp.Body)
-	if err != nil {
-		errResp[msg] = err.Error()
-		return c.JSON(http.StatusInternalServerError, errResp)
-	}
-
-	var bwSize int64
-
-	switch pathStr {
-	case "/add":
-		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
-		var addResult response.AddResp
-		var addResultList []response.AddResp
-		if err = json.Unmarshal(body, &addResult); err != nil {
-			logger.Error("unmarshal the add result failed", zap.Error(err))
-			list := strings.Split(string(body), "}")
-			for _, v := range list {
-				if len(v) < 5 {
-					continue
-				}
-				if err = json.Unmarshal([]byte(v+"}"), &addResult); err != nil {
-					logger.Error("unmarshal the add result failed", zap.Error(err))
-					continue
-				}
-				addResultList = append(addResultList, addResult)
-			}
-		} else {
-			addResultList = append(addResultList, addResult)
-		}
-		if err = h.ipfsService.Add(ctx, apiKey, addResultList); err != nil {
-			logger.Error("save upload file to database failed", zap.Error(err))
-		}
-	case "/dag/get", "/get", "/cat", "/block/get":
-		bwSize = int64(len(body))
-	case "/dag/put", "/block/put":
-		bwSize = cast.ToInt64(r.Header[lengthHeader][0])
-	}
-
-	if bwType > 0 {
-		if err = h.JsonHandler.rateLimiter.CheckIPFSLimit(
-			ctx,
-			apiKey,
-			constant.ChainIPFS.ChainID,
-			h.JsonHandler.logger,
-			bwSize, bwType,
-		); err != nil {
-			errResp[msg] = err.Error()
-			return c.JSON(http.StatusInternalServerError, errResp)
-		}
-		if err := h.JsonHandler.rateLimiter.BandwidthHook(
-			ctx,
-			h.JsonHandler.chain.ChainID,
-			apiKey,
-			bwSize,
-			bwType,
-		); err != nil {
-			logger.Error("bandwidth hook failed:", zap.Error(err))
-		}
-	}
-
-	// TODO: some method can cache
-	// version
-	// object/get
-	// block state
-
 	w.WriteHeader(targetResp.StatusCode)
-	_, err = w.Write(body)
+	_, err := w.Write(body)
 	if err != nil {
 		errResp[msg] = err.Error()
 		return c.JSON(http.StatusInternalServerError, errResp)
 	}
 
 	return nil
+}
+
+func (h *IPFSHandler) checkIpfsUserLimit(c echo.Context, apiKey string, bwSize int64, bwType uint8, errResp map[string]interface{}) (error, bool) {
+	ok, err := h.JsonHandler.rateLimiter.CheckIPFSLimit(
+		c.Request().Context(),
+		apiKey,
+		constant.ChainIPFS.ChainID,
+		h.JsonHandler.logger,
+		bwSize,
+		bwType,
+	)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return c.JSON(http.StatusInternalServerError, errResp), true
+	}
+	if !ok {
+		errResp[msg] = "out of usage limit"
+		return c.JSON(http.StatusBadRequest, errResp), true
+	}
+	return nil, false
 }
 
 func (h *IPFSHandler) proxyURL(pathStr, queryStr string) string {
@@ -288,4 +110,170 @@ func (h *IPFSHandler) ipfsMethod(apiKey string, path string) string {
 	pathStr = strings.TrimPrefix(pathStr, "/"+apiKey)
 	pathStr = strings.TrimPrefix(pathStr, "/api/v0")
 	return pathStr
+}
+
+func (h *IPFSHandler) getAddFileList(c echo.Context, body []byte, logger *zap.Logger) ([]response.AddResp, error, request.AddParam) {
+	var addResult response.AddResp
+	var addResultList []response.AddResp
+	var err error
+	if err = json.Unmarshal(body, &addResult); err != nil {
+		logger.Error("unmarshal the add result failed", zap.Error(err))
+		list := strings.Split(string(body), "}")
+		for _, v := range list {
+			if len(v) < 5 {
+				continue
+			}
+			if err = json.Unmarshal([]byte(v+"}"), &addResult); err != nil {
+				logger.Error("unmarshal the add result failed", zap.Error(err))
+				continue
+			}
+			addResultList = append(addResultList, addResult)
+		}
+	} else {
+		addResultList = append(addResultList, addResult)
+	}
+	var addParam request.AddParam
+	if err := (&echo.DefaultBinder{}).BindQueryParams(c, &addParam); err != nil {
+		logger.Error("read the add param failed", zap.Error(err))
+	}
+	// add param
+	addParam.PinStatus = models.PinStatusPin
+	pinedStr := c.Request().URL.Query().Get("pin")
+	if pinedStr == "false" {
+		addParam.PinStatus = models.PinStatusUnPin
+	}
+	return addResultList, err, addParam
+}
+
+func (h *IPFSHandler) proxyToIPFS(c echo.Context, pathStr string, errResp map[string]interface{}) (*http.Response, error, bool) {
+	r := c.Request()
+	requestURL := h.proxyURL(pathStr, r.URL.Query().Encode())
+
+	// Create a new request to the target URL
+	targetReq, err := http.NewRequest(r.Method, requestURL, r.Body)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return nil, c.JSON(http.StatusInternalServerError, errResp), true
+	}
+
+	// Copy the request headers to the new request
+	targetReq.Header = r.Header
+	targetReq.Header["User-Agent"] = nil
+	targetReq.Header["Referer"] = nil
+	targetReq.Header["Origin"] = nil
+
+	// Forward the request to the target URL
+	targetResp, err := h.httpClient.Do(targetReq)
+	if err != nil {
+		errResp[msg] = err.Error()
+		return nil, c.JSON(http.StatusBadRequest, errResp), true
+	}
+
+	return targetResp, nil, false
+}
+
+func (h *IPFSHandler) requestCheck(c echo.Context, errResp map[string]interface{}, logger *zap.Logger) (string, string, error, bool) {
+	var apiKey string
+	var err error
+	r := c.Request()
+	subdomain := strings.Split(r.Header.Get("Domain"), ".")[0]
+	if subdomain == "" {
+		apiKey, err = h.bindApiKey(c)
+		if err != nil {
+			errResp[msg] = err.Error()
+			return "", "", c.JSON(http.StatusUnauthorized, errResp), true
+		}
+	} else {
+		apiKey = h.ipfsService.GetApiKeyByActiveGateway(r.Context(), subdomain)
+		if apiKey == "" {
+			errResp[msg] = "not found apiKey"
+			return "", "", c.JSON(http.StatusUnauthorized, errResp), true
+		}
+	}
+
+	pathStr := h.ipfsMethod(apiKey, r.URL.Path)
+
+	if strings.Contains(pathStr, "ping") {
+		return "", "", c.String(http.StatusOK, "pong"), true
+	}
+
+	if !h.ipfsService.CheckMethod(pathStr) {
+		errResp[msg] = "not supported method"
+		return "", "", c.JSON(http.StatusMethodNotAllowed, errResp), true
+	}
+
+	// FIXME:
+	//if rlErr := h.JsonHandler.rateLimit(r.Context(), logger, apiKey, 1); rlErr != nil {
+	//	logger.Debug("rate limit", zap.String("apiKey", apiKey), zap.Error(rlErr))
+	//	errResp[msg] = rlErr.Error()
+	//	return "", "", c.JSON(http.StatusBadRequest, errResp), true
+	//}
+
+	return apiKey, pathStr, nil, false
+}
+
+func (h *IPFSHandler) getIPFSObjectsStats(cid string) (*response.IpfsObjectStat, error) {
+	url := h.endpoint + "/api/v0" + "/object/stat?arg=" + cid
+	method := "POST"
+
+	payload := &bytes.Buffer{}
+	writer := multipart.NewWriter(payload)
+	err := writer.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(method, url, payload)
+
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	res, err := h.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result response.IpfsObjectStat
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (h *IPFSHandler) pinAddFile(c echo.Context, apiKey, cid string, logger *zap.Logger, errResp map[string]interface{}) (uint8, int64, []response.AddResp, bool, error) {
+	var pinAddFileList []response.AddResp
+	var bwType uint8
+	var bwSize int64
+	file, _ := h.ipfsService.GetUserIpfsFile(c.Request().Context(), apiKey, cid)
+	if file.ID == 0 {
+		stats, err := h.getIPFSObjectsStats(cid)
+		if err != nil {
+			errMsg := "pin files failed"
+			logger.Error(errMsg, zap.Error(err))
+			errResp[msg] = errMsg
+			return 0, 0, nil, true, c.JSON(http.StatusInternalServerError, errResp)
+		}
+
+		bwType = ratelimitv1.BandWidthUpload
+		bwSize := int64(stats.CumulativeSize)
+
+		_, done := h.checkIpfsUserLimit(c, apiKey, bwSize, bwType, errResp)
+		if done {
+			return 0, 0, nil, true, nil
+		}
+
+		pinAddFileList = append(pinAddFileList, response.AddResp{
+			Hash: stats.Hash,
+			Size: cast.ToString(stats.CumulativeSize),
+		})
+	}
+	return bwType, bwSize, pinAddFileList, false, nil
 }

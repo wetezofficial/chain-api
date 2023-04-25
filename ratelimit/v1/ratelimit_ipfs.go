@@ -61,17 +61,17 @@ func (l *RateLimiter) CheckIPFSLimit(
 	logger *zap.Logger,
 	fileSize int64,
 	bwType uint8,
-) error {
+) (bool, error) {
 	usageRecord, err, done := l.GetIPFSUserUsage(ctx, apiKey, chainID, logger)
 	if !done {
-		return err
+		return done, err
 	}
 
 	userLimit, err := l.rdb.HGetAll(ctx, cachekey.GetUserIpfsLimitKey(apiKey, chainID)).Result()
 	if err != nil {
 		errMsg := "can not read the plan limit"
 		logger.Error(errMsg, zap.Error(err))
-		return fmt.Errorf(errMsg)
+		return false, fmt.Errorf(errMsg)
 	}
 
 	for k, v := range usageRecord {
@@ -84,11 +84,12 @@ func (l *RateLimiter) CheckIPFSLimit(
 			usage += uint64(fileSize)
 		}
 		if usage >= cast.ToUint64(userLimit[k]) {
-			return fmt.Errorf("the %s out the plan limit", k)
+			logger.Error("the %s out the plan limit")
+			return false, nil
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 // GetIPFSUserUsage query ipfs usage return map, if not exist init data
