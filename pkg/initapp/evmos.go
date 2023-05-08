@@ -25,11 +25,12 @@ func initEvmosHandler(app *app.App) error {
 
 	p := proxy.NewJsonRpcProxy(app, cfg)
 
-	var	justWhiteMethods []string
+	var justWhiteMethods []string
 
 	h := handler.NewJsonRpcHandler(
 		chain,
 		tendermintHttpBlackMethods,
+		[]string{},
 		tendermintWsBlackMethods,
 		justWhiteMethods,
 		p,

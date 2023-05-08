@@ -27,7 +27,7 @@ func initArbitrumHandler(app *app.App) error {
 	}
 	var wsBlackMethods []string
 
-	justWhiteMethods:=[]string{
+	justWhiteMethods := []string{
 		"trace_call",
 		"trace_block",
 		"trace_get",
@@ -79,6 +79,7 @@ func initArbitrumHandler(app *app.App) error {
 	h := handler.NewJsonRpcHandler(
 		chain,
 		httpBlackMethods,
+		[]string{},
 		wsBlackMethods,
 		justWhiteMethods,
 		p,

@@ -39,7 +39,7 @@ func NewIPFSHandler(
 
 	ipfsHandler := &IPFSHandler{
 		// without Methods & proxy
-		JsonHandler: NewJsonRpcHandler(chain, nil, nil, nil, nil, app),
+		JsonHandler: NewJsonRpcHandler(chain, nil, nil, nil, nil, nil, app),
 		ipfsService: app.IPFSSrv,
 		endpoint:    fmt.Sprintf("%s://%s:%d", app.Config.IPFSCluster.Schemes, app.Config.IPFSCluster.Host, app.Config.IPFSCluster.Port),
 		httpClient:  &http.Client{},

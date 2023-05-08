@@ -29,7 +29,7 @@ func initHscHandler(app *app.App) error {
 	}
 	var wsBlackMethods []string
 
-	justWhiteMethods:=[]string{
+	justWhiteMethods := []string{
 		"trace_call",
 		"trace_block",
 		"trace_get",
@@ -44,7 +44,6 @@ func initHscHandler(app *app.App) error {
 		"debug_traceBlockByNumber",
 		"debug_traceBlockByHash",
 	}
-
 
 	cacheableMethods := []string{
 		"eth_getBlockByHash",
@@ -85,6 +84,7 @@ func initHscHandler(app *app.App) error {
 	h := handler.NewJsonRpcHandler(
 		chain,
 		httpBlackMethods,
+		[]string{},
 		wsBlackMethods,
 		justWhiteMethods,
 		p,

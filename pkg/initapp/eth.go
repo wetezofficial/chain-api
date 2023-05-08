@@ -27,6 +27,10 @@ func initEthHandler(app *app.App) error {
 		"eth_unsubscribe",
 	}
 
+	erigonMethods := []string{
+		"eth_getLogs",
+	}
+
 	var wsBlackMethods []string
 
 	cacheableMethods := []string{
@@ -54,7 +58,7 @@ func initEthHandler(app *app.App) error {
 		"web3_clientVersion",
 	}
 
-	justWhiteMethods:=[]string{
+	justWhiteMethods := []string{
 		"trace_call",
 		"trace_block",
 		"trace_get",
@@ -71,8 +75,12 @@ func initEthHandler(app *app.App) error {
 	}
 
 	cfg := proxy.JsonRpcProxyConfig{
-		HttpUpstream:     app.Config.Upstream.Eth.Http,
-		WsUpstream:       app.Config.Upstream.Eth.Ws,
+		HttpUpstream: app.Config.Upstream.Eth.Http,
+		WsUpstream:   app.Config.Upstream.Eth.Ws,
+
+		HttpErigonStream: app.Config.Upstream.Eth.Erigon.Http,
+		WsErigonUpstream: app.Config.Upstream.Eth.Erigon.Ws,
+
 		HttpClient:       http.DefaultClient,
 		CacheTime:        time.Second * 12,
 		ChainID:          chain.ChainID,
@@ -84,6 +92,7 @@ func initEthHandler(app *app.App) error {
 	h := handler.NewJsonRpcHandler(
 		chain,
 		httpBlackMethods,
+		erigonMethods,
 		wsBlackMethods,
 		justWhiteMethods,
 		p,

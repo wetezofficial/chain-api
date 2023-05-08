@@ -4,6 +4,9 @@ listen = "127.0.0.1:1324"
 eth.http = "https://rinkeby-light.eth.linkpool.io"
 eth.ws = ""
 
+eth.erigon.http =""
+eth.erigon.ws =""
+
 arbitrum.http = "https://rinkeby.arbitrum.io/rpc"
 arbitrum.ws = ""
 

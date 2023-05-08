@@ -55,6 +55,9 @@ type JsonRpcProxyConfig struct {
 	HttpUpstream string
 	WsUpstream   string
 
+	HttpErigonStream string
+	WsErigonUpstream string
+
 	HttpClient       *http.Client
 	CacheTime        time.Duration
 	ChainID          uint8
@@ -155,7 +158,14 @@ func (p *JsonRpcProxy) DoHttpUpstreamCall(req *jsonrpc.JsonRpcRequest, logger *z
 		return nil, errors.Wrap(err, "fail to marshal request")
 	}
 
-	res, err := p.httpClient.Post(p.cfg.HttpUpstream, "application/json", strings.NewReader(string(rawreq)))
+	var requestRPC string
+	if req.RequestType == jsonrpc.RequestTypeErigon {
+		requestRPC = p.cfg.HttpErigonStream
+	} else {
+		requestRPC = p.cfg.HttpUpstream
+	}
+
+	res, err := p.httpClient.Post(requestRPC, "application/json", strings.NewReader(string(rawreq)))
 	if err != nil {
 		logger.Error("The rawreq is", zap.ByteString("rawreq", rawreq))
 		return nil, errors.Wrap(err, "fail to post request")
@@ -198,14 +208,18 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*Upstr
 	if err != nil {
 		return nil, err
 	}
-
+	erigonUpstream, _, err := websocket.DefaultDialer.Dial(p.cfg.WsErigonUpstream, nil)
+	if err != nil {
+		return nil, err
+	}
 	u := &UpstreamWebSocket{
-		conn:     upstream,
-		client:   client,
-		logger:   logger,
-		proxy:    p,
-		mutex:    new(sync.Mutex),
-		requests: make(map[interface{}]*request),
+		conn:       upstream,
+		erigonConn: erigonUpstream,
+		client:     client,
+		logger:     logger,
+		proxy:      p,
+		mutex:      new(sync.Mutex),
+		requests:   make(map[interface{}]*request),
 	}
 	go u.run()
 	return u, nil

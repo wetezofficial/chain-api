@@ -25,10 +25,11 @@ func initCosmosHandler(app *app.App) error {
 
 	p := proxy.NewJsonRpcProxy(app, cfg)
 
-	var	justWhiteMethods []string
+	var justWhiteMethods []string
 
 	h := handler.NewJsonRpcHandler(
 		chain,
+		[]string{},
 		tendermintHttpBlackMethods,
 		tendermintWsBlackMethods,
 		justWhiteMethods,

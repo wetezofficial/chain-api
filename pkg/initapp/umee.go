@@ -30,6 +30,7 @@ func initUmeeHandler(app *app.App) error {
 	h := handler.NewJsonRpcHandler(
 		chain,
 		tendermintHttpBlackMethods,
+		[]string{},
 		tendermintWsBlackMethods,
 		justWhiteMethods,
 		p,

@@ -7,9 +7,15 @@ import (
 
 // https://www.jsonrpc.org/specification#compatibility
 
+const (
+	RequestTypeGeth   = 1
+	RequestTypeErigon = 2
+)
+
 type JsonRpcRequest struct {
-	batchCall  []JsonRpcSingleRequest
-	singleCall *JsonRpcSingleRequest
+	batchCall   []JsonRpcSingleRequest
+	singleCall  *JsonRpcSingleRequest
+	RequestType uint8 // 1-geth 2-erigon
 }
 
 func (r *JsonRpcRequest) IsBatchCall() bool {

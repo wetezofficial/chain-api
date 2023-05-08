@@ -13,8 +13,12 @@ type Config struct {
 
 	Upstream struct {
 		Eth struct {
-			Http string `mapstructure:"http"`
-			Ws   string `mapstructure:"ws"`
+			Http   string `mapstructure:"http"`
+			Ws     string `mapstructure:"ws"`
+			Erigon struct {
+				Http string `mapstructure:"http"`
+				Ws   string `mapstructure:"ws"`
+			} `mapstructure:"erigon"`
 		} `mapstructure:"eth"`
 		Polygon struct {
 			Http string `mapstructure:"http"`

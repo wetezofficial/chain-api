@@ -97,6 +97,7 @@ func initSolanaHandler(app *app.App) error {
 	h := handler.NewJsonRpcHandler(
 		chain,
 		httpBlackMethods,
+		[]string{},
 		wsBlackMethods,
 		justWhiteMethods,
 		p,

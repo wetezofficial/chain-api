@@ -30,6 +30,7 @@ type JsonRpcHandler struct {
 	httpBlackMethods []string // black list mode
 	wsBlackMethods   []string // black list mode
 	justWhiteMethods []string // only apiKey in white list can request
+	erigonMethods    []string
 	proxy            *proxy.JsonRpcProxy
 	rateLimiter      *ratelimitv1.RateLimiter
 	logger           *zap.Logger
@@ -39,6 +40,7 @@ type JsonRpcHandler struct {
 func NewJsonRpcHandler(
 	chain constant.Chain,
 	httpBlackMethods []string,
+	erigonMethods []string,
 	wsBlackMethods []string,
 	justWhiteMethods []string,
 	proxy *proxy.JsonRpcProxy,
@@ -47,6 +49,7 @@ func NewJsonRpcHandler(
 	return &JsonRpcHandler{
 		chain:            chain,
 		httpBlackMethods: httpBlackMethods,
+		erigonMethods:    erigonMethods,
 		wsBlackMethods:   wsBlackMethods,
 		justWhiteMethods: justWhiteMethods,
 		proxy:            proxy,
@@ -68,7 +71,7 @@ func (h *JsonRpcHandler) validateReq(req *jsonrpc.JsonRpcSingleRequest, blackMet
 	return nil
 }
 
-func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
+func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods, erigonMethods []string) (*jsonrpc.JsonRpcRequest, *jsonrpc.JsonRpcErr) {
 	req := jsonrpc.JsonRpcRequest{}
 	if err := json.Unmarshal(rawreq, &req); err != nil {
 		return nil, jsonrpc.ParseError
@@ -83,10 +86,16 @@ func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods []strin
 			if err := h.validateReq(&r, blackMethods); err != nil {
 				return nil, err
 			}
+			if utils.In(r.Method, erigonMethods) {
+				req.RequestType = jsonrpc.RequestTypeErigon
+			}
 		}
 	} else {
 		if err := h.validateReq(req.GetSingleCall(), blackMethods); err != nil {
 			return nil, err
+		}
+		if utils.In(req.GetSingleCall().Method, erigonMethods) {
+			req.RequestType = jsonrpc.RequestTypeErigon
 		}
 	}
 
@@ -141,16 +150,6 @@ func (h *JsonRpcHandler) rateLimit(ctx context.Context, logger *zap.Logger, apiK
 	return nil
 }
 
-// TODO: will remove
-func (h *JsonRpcHandler) apiExist(ctx context.Context, logger *zap.Logger, apiKey string) *jsonrpc.JsonRpcErr {
-	if err := h.rateLimiter.Allow(ctx, h.chain.ChainID, apiKey, 1); err != nil {
-		if errors.Is(err, ratelimitv1.ApiKeyNotExistError) {
-			return jsonrpc.UnauthorizedErr
-		}
-	}
-	return nil
-}
-
 func (h *JsonRpcHandler) bindApiKey(c echo.Context) (string, error) {
 	var apiKey string
 	err := echo.PathParamsBinder(c).String("apiKey", &apiKey).BindError()
@@ -187,7 +186,7 @@ func (h *JsonRpcHandler) Http(c echo.Context) error {
 		return err
 	}
 	logger.Debug("new request", zap.ByteString("rawreq", rawreq))
-	req, vErr := h.bind(apiKey, rawreq, h.httpBlackMethods)
+	req, vErr := h.bind(apiKey, rawreq, h.httpBlackMethods, h.erigonMethods)
 	if vErr != nil {
 		return c.JSON(200, vErr)
 	}
@@ -334,7 +333,7 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 
 		logger.Debug("new request", zap.ByteString("rawreq", rawreq))
 
-		req, vErr := h.bind(apiKey, rawreq, h.wsBlackMethods)
+		req, vErr := h.bind(apiKey, rawreq, h.wsBlackMethods, h.erigonMethods)
 		if vErr != nil {
 			respJSON(logger, vErr)
 			continue
@@ -346,7 +345,6 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 			continue
 		}
 
-		ctx, _ = context.WithTimeout(c.Request().Context(), time.Second*10)
 		if err = upstreamConn.Send(c.Request().Context(), logger, req); err != nil {
 			logger.Error("fail to proxy request", zap.Error(err))
 			respJSON(logger, jsonrpc.NewInternalServerError(nil))
