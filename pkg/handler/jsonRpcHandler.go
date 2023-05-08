@@ -343,11 +343,11 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 			continue
 		}
 
-		//ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
-		//if rlErr := h.rateLimit(ctx, logger, apiKey, req.Cost()); rlErr != nil {
-		//	respJSON(logger, rlErr)
-		//	continue
-		//}
+		ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
+		if rlErr := h.rateLimit(ctx, logger, apiKey, req.Cost()); rlErr != nil {
+			respJSON(logger, rlErr)
+			continue
+		}
 
 		if err = upstreamConn.Send(c.Request().Context(), logger, req); err != nil {
 			logger.Error("fail to proxy request", zap.Error(err))
