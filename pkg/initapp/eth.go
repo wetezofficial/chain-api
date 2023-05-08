@@ -29,6 +29,7 @@ func initEthHandler(app *app.App) error {
 
 	erigonMethods := []string{
 		"eth_getLogs",
+		"eth_getBlockReceipts",
 	}
 
 	var wsBlackMethods []string

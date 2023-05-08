@@ -88,6 +88,8 @@ func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods, erigon
 			}
 			if utils.In(r.Method, erigonMethods) {
 				req.RequestType = jsonrpc.RequestTypeErigon
+				// cache save the request count
+				h.rateLimiter.ErigonCount(context.Background(), len(req.GetBatchCall()))
 			}
 		}
 	} else {
@@ -96,6 +98,8 @@ func (h *JsonRpcHandler) bind(apiKey string, rawreq []byte, blackMethods, erigon
 		}
 		if utils.In(req.GetSingleCall().Method, erigonMethods) {
 			req.RequestType = jsonrpc.RequestTypeErigon
+			// cache save the request count
+			h.rateLimiter.ErigonCount(context.Background(), 1)
 		}
 	}
 
@@ -339,11 +343,11 @@ func (h *JsonRpcHandler) handleWs(c echo.Context, logger *zap.Logger) error {
 			continue
 		}
 
-		ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
-		if rlErr := h.rateLimit(ctx, logger, apiKey, req.Cost()); rlErr != nil {
-			respJSON(logger, rlErr)
-			continue
-		}
+		//ctx, _ := context.WithTimeout(c.Request().Context(), time.Second*2)
+		//if rlErr := h.rateLimit(ctx, logger, apiKey, req.Cost()); rlErr != nil {
+		//	respJSON(logger, rlErr)
+		//	continue
+		//}
 
 		if err = upstreamConn.Send(c.Request().Context(), logger, req); err != nil {
 			logger.Error("fail to proxy request", zap.Error(err))

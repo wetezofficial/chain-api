@@ -79,6 +79,12 @@ func (l *RateLimiter) CheckInWhiteList(apiKey string) bool {
 	return inWhitelist
 }
 
+func (l *RateLimiter) ErigonCount(ctx context.Context, n int) {
+	if err := l.rdb.IncrBy(ctx, cachekey.GetErigonTotalKey(), int64(n)).Err(); err != nil {
+		l.logger.Error("ErigonCount IncrBy Error:", zap.Error(err))
+	}
+}
+
 func (l *RateLimiter) Allow(ctx context.Context, chainID uint8, apiKey string, n int) error {
 	logger := l.logger.With(zap.String("apiKey", apiKey), zap.Uint8("chainId", chainID))
 
