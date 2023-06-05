@@ -18,7 +18,7 @@ func initEvmosHandler(app *app.App) error {
 		HttpUpstream:     chainUpstreamCfg.Http,
 		WsUpstream:       chainUpstreamCfg.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Second * 6, // block time 3s
+		CacheTime:        time.Second * 4,  // block time 4.26s https://escan.live/
 		ChainID:          chain.ChainID,
 		CacheableMethods: tendermintCacheableMethods,
 	}

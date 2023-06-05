@@ -6,11 +6,12 @@ package initapp
 
 import (
 	"net/http"
+	"time"
+
 	"starnet/chain-api/pkg/app"
 	"starnet/chain-api/pkg/handler"
 	"starnet/chain-api/pkg/proxy"
 	"starnet/starnet/constant"
-	"time"
 )
 
 func initSolanaHandler(app *app.App) error {
@@ -87,7 +88,7 @@ func initSolanaHandler(app *app.App) error {
 		HttpUpstream:     app.Config.Upstream.Solana.Http,
 		WsUpstream:       app.Config.Upstream.Solana.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Second * 4, // block time 400ms https://www.finextra.com/blogposting/21693/introduction-to-the-solana-blockchain
+		CacheTime:        time.Millisecond * 400, // block time 400ms https://www.finextra.com/blogposting/21693/introduction-to-the-solana-blockchain
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
 	}

@@ -85,7 +85,7 @@ func initPolygonHandler(app *app.App) error {
 		HttpUpstream:     app.Config.Upstream.Polygon.Http,
 		WsUpstream:       app.Config.Upstream.Polygon.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Second * 5, // block time 2.3s https://www.blocknative.com/blog/monitor-polygon-mempool
+		CacheTime:        time.Second * 2, // block time 2.3s https://www.blocknative.com/blog/monitor-polygon-mempool
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
 	}

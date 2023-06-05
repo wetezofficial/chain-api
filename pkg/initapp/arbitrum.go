@@ -69,7 +69,7 @@ func initArbitrumHandler(app *app.App) error {
 		HttpUpstream:     app.Config.Upstream.Arbitrum.Http,
 		WsUpstream:       app.Config.Upstream.Arbitrum.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Second * 15, // L1 15 seconds L2 1 minutes  https://developer.offchainlabs.com/docs/time_in_arbitrum
+		CacheTime:        time.Second * 1, // L1 15 seconds L2 1 minutes  https://developer.offchainlabs.com/docs/time_in_arbitrum
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
 	}

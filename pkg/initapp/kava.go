@@ -18,7 +18,7 @@ func initKavaHandler(app *app.App) error {
 		HttpUpstream:     chainUpstreamCfg.Http,
 		WsUpstream:       chainUpstreamCfg.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Second * 6, // block time 3s
+		CacheTime:        time.Second * 6,
 		ChainID:          chain.ChainID,
 		CacheableMethods: tendermintCacheableMethods,
 	}
