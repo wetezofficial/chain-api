@@ -208,10 +208,15 @@ func (p *JsonRpcProxy) NewUpstreamWS(client *Client, logger *zap.Logger) (*Upstr
 	if err != nil {
 		return nil, err
 	}
-	erigonUpstream, _, err := websocket.DefaultDialer.Dial(p.cfg.WsErigonUpstream, nil)
-	if err != nil {
-		return nil, err
+
+	var erigonUpstream *websocket.Conn
+	if p.cfg.WsErigonUpstream != "" {
+		erigonUpstream, _, err = websocket.DefaultDialer.Dial(p.cfg.WsErigonUpstream, nil)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	u := &UpstreamWebSocket{
 		conn:       upstream,
 		erigonConn: erigonUpstream,

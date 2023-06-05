@@ -103,7 +103,9 @@ func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq
 
 func (u *UpstreamWebSocket) run() {
 	defer u.conn.Close()
-	defer u.erigonConn.Close()
+	if u.erigonConn != nil {
+		defer u.erigonConn.Close()
+	}
 	defer u.client.conn.Close()
 
 	u.conn.SetPongHandler(func(appData string) error {
@@ -115,60 +117,65 @@ func (u *UpstreamWebSocket) run() {
 	})
 
 	p := u.proxy
-	erigonWs := u.erigonConn
-	ws := u.conn
 
-	go func() {
-		for {
-			_, rawresp, err := ws.ReadMessage()
-			if err != nil {
-				return
-			}
-			u.logger.Debug("got resp from upstream", zap.ByteString("rawresp", rawresp))
+	if u.erigonConn != nil {
+		go func() {
+			erigonWs := u.erigonConn
+			for {
+				if erigonWs == nil {
+					break
+				}
+				_, rawresp, err := erigonWs.ReadMessage()
+				if err != nil {
+					return
+				}
+				u.logger.Debug("got resp from upstream", zap.ByteString("rawresp", rawresp))
 
-			rawresp = bytes.TrimSpace(rawresp)
-			if rawresp[0] == '[' && rawresp[len(rawresp)-1] == ']' {
-				// batch call response
-				u.client.Send(RespData{Data: rawresp})
-				continue
-			}
+				rawresp = bytes.TrimSpace(rawresp)
+				if rawresp[0] == '[' && rawresp[len(rawresp)-1] == ']' {
+					// batch call response
+					u.client.Send(RespData{Data: rawresp})
+					continue
+				}
 
-			// req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
-			upstreamResp := UpstreamJsonRpcResponse{}
-			if err = json.Unmarshal(rawresp, &upstreamResp); err != nil {
-				return
-			}
+				// req.logger.Debug("new upstream response", zap.ByteString("resp", rawreq))
+				upstreamResp := UpstreamJsonRpcResponse{}
+				if err = json.Unmarshal(rawresp, &upstreamResp); err != nil {
+					return
+				}
 
-			// 订阅的通知是没有 id 字段的
-			if upstreamResp.ID == 0 {
-				// 直接把内容写入到客户端
-				u.client.Send(RespData{Data: rawresp, Subscription: true})
-				continue
-			}
-
-			u.mutex.Lock()
-			req, ok := u.requests[upstreamResp.ID]
-			u.mutex.Unlock()
-			if ok {
+				// 订阅的通知是没有 id 字段的
+				if upstreamResp.ID == 0 {
+					// 直接把内容写入到客户端
+					u.client.Send(RespData{Data: rawresp, Subscription: true})
+					continue
+				}
 
 				u.mutex.Lock()
-				delete(u.requests, upstreamResp.ID)
+				req, ok := u.requests[upstreamResp.ID]
 				u.mutex.Unlock()
+				if ok {
 
-				// step3. Cache if it is a valid result and cacheable
-				if req.cacheKey != nil && upstreamResp.Result != nil {
-					if err = p.CacheFn(req, upstreamResp.Result); err != nil {
-						req.logger.Error("failed to cache result", zap.Error(err))
+					u.mutex.Lock()
+					delete(u.requests, upstreamResp.ID)
+					u.mutex.Unlock()
+
+					// step3. Cache if it is a valid result and cacheable
+					if req.cacheKey != nil && upstreamResp.Result != nil {
+						if err = p.CacheFn(req, upstreamResp.Result); err != nil {
+							req.logger.Error("failed to cache result", zap.Error(err))
+						}
 					}
 				}
+
+				u.client.Send(RespData{Data: rawresp})
 			}
+		}()
+	}
 
-			u.client.Send(RespData{Data: rawresp})
-		}
-	}()
-
+	ws := u.conn
 	for {
-		_, rawresp, err := erigonWs.ReadMessage()
+		_, rawresp, err := ws.ReadMessage()
 		if err != nil {
 			return
 		}
@@ -213,5 +220,4 @@ func (u *UpstreamWebSocket) run() {
 
 		u.client.Send(RespData{Data: rawresp})
 	}
-
 }
