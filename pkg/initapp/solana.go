@@ -88,7 +88,7 @@ func initSolanaHandler(app *app.App) error {
 		HttpUpstream:     app.Config.Upstream.Solana.Http,
 		WsUpstream:       app.Config.Upstream.Solana.Ws,
 		HttpClient:       http.DefaultClient,
-		CacheTime:        time.Millisecond * 400, // block time 400ms https://www.finextra.com/blogposting/21693/introduction-to-the-solana-blockchain
+		CacheTime:        time.Second * 1, // block time 400ms https://www.finextra.com/blogposting/21693/introduction-to-the-solana-blockchain
 		ChainID:          chain.ChainID,
 		CacheableMethods: cacheableMethods,
 	}
