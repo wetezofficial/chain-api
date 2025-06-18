@@ -62,7 +62,7 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 	go func() {
 		for {
 			h.checkNodesHealthy()
-			time.Sleep(30 * time.Second)
+			time.Sleep(time.Minute)
 		}
 	}()
 
