@@ -80,8 +80,8 @@ func NewRouter(app *app.App) *echo.Echo {
 			if err != nil {
 				panic(err)
 			}
-			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/ws", rpcHandler.Ws)
-			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/ws/*", rpcHandler.Ws)
+			e.Any("/rpc/"+rpcConfig.ChainName+"/ws/"+app.RpcConfig.ApiKey, rpcHandler.Ws)
+			e.Any("/rpc/"+rpcConfig.ChainName+"/ws/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Ws)
 			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Http)
 			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Http)
 		}
