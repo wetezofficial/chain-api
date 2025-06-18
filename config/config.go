@@ -5,7 +5,9 @@ import (
 
 	starnetRedis "starnet/starnet/pkg/redis"
 
+	"github.com/BurntSushi/toml"
 	"github.com/spf13/viper"
+	"go.uber.org/zap/buffer"
 )
 
 type Config struct {
@@ -108,4 +110,63 @@ func LoadConfig(configFile string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+type RpcNode struct {
+	Name string `toml:"name"`
+	Http string `toml:"http"`
+	Ws   string `toml:"ws"`
+}
+
+type RpcConfig struct {
+	ApiKey string
+	Chains []ChainConfig
+}
+
+type ChainConfig struct {
+	ChainName                   string
+	ChainType                   string    `toml:"chain_type"`
+	MaxBehindBlocks             uint64    `toml:"max_behind_blocks"`
+	BlockNumberMethod           string    `toml:"block_number_method"`
+	BlockNumberResultExtractor  string    `toml:"block_number_result_extractor"`
+	BlockNumberResultExpression string    `toml:"block_number_result_expression"`
+	Nodes                       []RpcNode `toml:"nodes"`
+}
+
+func LoadRPCConfig(data string) (*RpcConfig, error) {
+	var config map[string]any
+	err := toml.Unmarshal([]byte(data), &config)
+	if err != nil {
+		return nil, err
+	}
+
+	rpcConfig := &RpcConfig{
+		ApiKey: config["apikey"].(string),
+		Chains: make([]ChainConfig, 0),
+	}
+
+	for chainName, chainConfig := range config {
+		if chainName == "apikey" {
+			continue
+		}
+		cfg := ChainConfig{
+			ChainName: chainName,
+			// Default values
+			MaxBehindBlocks:             10,
+			BlockNumberMethod:           "eth_blockNumber",
+			BlockNumberResultExtractor:  "jq",
+			BlockNumberResultExpression: ".result",
+		}
+		buf := buffer.Buffer{}
+		if err := toml.NewEncoder(&buf).Encode(chainConfig); err != nil {
+			return nil, err
+		}
+
+		if err := toml.Unmarshal(buf.Bytes(), &cfg); err != nil {
+			return nil, err
+		}
+
+		rpcConfig.Chains = append(rpcConfig.Chains, cfg)
+	}
+	return rpcConfig, nil
 }

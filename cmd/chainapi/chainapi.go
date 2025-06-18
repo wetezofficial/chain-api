@@ -29,13 +29,19 @@ func main() {
 				Usage:    "specify config",
 				Required: true,
 			},
+			&cli.StringFlag{
+				Name:     "rpc_config",
+				Value:    "",
+				Usage:    "specify RPC config file",
+				Required: false,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			fmt.Println("Starnet Chain API service")
 			fmt.Println("Starnet Version", starnet.Version)
 
 			configFile := c.String("config")
-			app := initapp.NewApp(configFile)
+			app := initapp.NewApp(configFile, c.String("rpc_config"))
 			app.Start()
 
 			return nil

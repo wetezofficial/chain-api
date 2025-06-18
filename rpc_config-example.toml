@@ -1,0 +1,20 @@
+apikey = "YOUR RANDOM KEY" 
+
+[chain_name]
+chain_type = "evm"
+
+# Optional configs
+# max_behind_blocks = 10
+# block_number_method =  "eth_blockNumber"
+# block_number_result_extractor = "jq"
+# block_number_result_expression = ".result"
+
+[[chain_name.nodes]]
+name = "node1"
+http = "https://"
+ws = "wss://"
+
+[[chain_name.nodes]]
+name = "node2"
+http = "https://"
+ws = "wss://"

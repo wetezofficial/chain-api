@@ -14,6 +14,7 @@ import (
 // App 所有的依赖信息都在这里
 type App struct {
 	Config      *config.Config
+	RpcConfig   *config.RpcConfig
 	Logger      *zap.Logger
 	DB          *gorm.DB
 	Rdb         redis.UniversalClient

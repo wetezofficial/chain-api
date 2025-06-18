@@ -1,4 +1,5 @@
 /config.toml
+/rpc_config.toml
 /starnet_chain_api.log
 build
 .fleet
@@ -6,4 +7,5 @@ log
 *.log
 chain-api
 .gitignore
-cmd/chainapi/__debug_bin
+/.vscode
+__debug_bin*

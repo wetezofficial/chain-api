@@ -3,6 +3,7 @@ package initapp
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"starnet/chain-api/pkg/db"
 	"starnet/chain-api/service"
@@ -19,7 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func NewApp(configFile string) *app.App {
+func NewApp(configFile string, rpcConfigFile string) *app.App {
 	// load configuration
 	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
@@ -43,19 +44,32 @@ func NewApp(configFile string) *app.App {
 
 	ipfsDao := dao.NewIPFSDao(_db)
 	userDao := dao.NewUserDao(_db)
-	projectDao:=dao.NewProjectDao(_db)
+	projectDao := dao.NewProjectDao(_db)
 
 	rdbCache := cache.NewRedisCache(rdb, "chain:")
 
-	ipfsSrv := service.NewIpfsService(ipfsDao, userDao,projectDao, rdb, rdbCache, logger)
+	ipfsSrv := service.NewIpfsService(ipfsDao, userDao, projectDao, rdb, rdbCache, logger)
 
 	rateLimiter, err := ratelimitv1.NewRateLimiter(rdb, ipfsSrv, logger, apiKeysWhitelist)
 	if err != nil {
 		logger.Fatal("fail to get rate limiter", zap.Error(err))
 	}
 
+	var rpcConfig *config.RpcConfig
+	if rpcConfigFile != "" {
+		rpcConfigData, err := os.ReadFile(rpcConfigFile)
+		if err != nil {
+			logger.Fatal("fail to read rpc config file", zap.Error(err))
+		}
+		rpcConfig, err = config.LoadRPCConfig(string(rpcConfigData))
+		if err != nil {
+			logger.Fatal("fail to load rpc config", zap.Error(err))
+		}
+	}
+
 	_app := app.App{
 		Config:      cfg,
+		RpcConfig:   rpcConfig,
 		Logger:      logger,
 		Rdb:         rdb,
 		DB:          _db,

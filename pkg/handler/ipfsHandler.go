@@ -4,24 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	iface "github.com/ipfs/interface-go-ipfs-core"
-	"github.com/ipfs/interface-go-ipfs-core/path"
 	"net/http"
 	"strings"
+
+	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
 
 	"starnet/chain-api/pkg/request"
 	"starnet/chain-api/pkg/response"
 	ratelimitv1 "starnet/chain-api/ratelimit/v1"
 	"starnet/starnet/models"
 
-	ipfsApi "github.com/ipfs/go-ipfs-http-client"
+	"starnet/chain-api/pkg/app"
+	serviceInterface "starnet/chain-api/service/interface"
+	"starnet/starnet/constant"
+
+	"github.com/ipfs/kubo/client/rpc"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 	"go.uber.org/zap"
-	"starnet/chain-api/pkg/app"
-	serviceInterface "starnet/chain-api/service/interface"
-	"starnet/starnet/constant"
 )
 
 type IPFSHandler struct {
@@ -29,7 +32,7 @@ type IPFSHandler struct {
 	ipfsService serviceInterface.IpfsService
 	endpoint    string
 	httpClient  *http.Client
-	ipfsClient  *ipfsApi.HttpApi
+	ipfsClient  *rpc.HttpApi
 }
 
 func NewIPFSHandler(
@@ -44,7 +47,7 @@ func NewIPFSHandler(
 		endpoint:    fmt.Sprintf("%s://%s:%d", app.Config.IPFSCluster.Schemes, app.Config.IPFSCluster.Host, app.Config.IPFSCluster.Port),
 		httpClient:  &http.Client{},
 	}
-	node, err := ipfsApi.NewURLApiWithClient(ipfsHandler.endpoint, ipfsHandler.httpClient)
+	node, err := rpc.NewURLApiWithClient(ipfsHandler.endpoint, ipfsHandler.httpClient)
 	if err != nil {
 		panic(err)
 	}
@@ -221,17 +224,23 @@ func (h *IPFSHandler) requestCheck(c echo.Context, errResp map[string]interface{
 }
 
 func (h *IPFSHandler) pinAddObject(ctx context.Context, cid string) error {
-	p := path.New(cid)
+	p, err := path.NewPath(cid)
+	if err != nil {
+		return err
+	}
 	return h.ipfsClient.Pin().Add(ctx, p)
 }
 
-func (h *IPFSHandler) getIPFSObjectsStats(ctx context.Context, cid string) (*iface.ObjectStat, error) {
-	p := path.New(cid)
-	stat, err := h.ipfsClient.Object().Stat(ctx, p)
+func (h *IPFSHandler) getIPFSObjectsStats(ctx context.Context, cidStr string) (*format.NodeStat, error) {
+	cid, err := cid.Parse(cidStr)
 	if err != nil {
 		return nil, err
 	}
-	return stat, nil
+	obj, err := h.ipfsClient.Dag().Get(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	return obj.Stat()
 }
 
 func (h *IPFSHandler) pinAddFile(c echo.Context, apiKey, cid string, logger *zap.Logger, errResp map[string]interface{}) (uint8, int64, []response.AddResp, bool, error) {
@@ -257,7 +266,7 @@ func (h *IPFSHandler) pinAddFile(c echo.Context, apiKey, cid string, logger *zap
 		}
 
 		pinAddFileList = append(pinAddFileList, response.AddResp{
-			Hash: stats.Cid.String(),
+			Hash: stats.Hash,
 			Size: cast.ToString(stats.CumulativeSize),
 		})
 	}

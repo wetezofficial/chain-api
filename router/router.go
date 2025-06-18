@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/handler"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -16,7 +17,6 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
-	e.Use(middleware.RequestID())
 	e.Use(middleware.RequestIDWithConfig(middleware.RequestIDConfig{
 		RequestIDHandler: func(c echo.Context, requestID string) {
 			ctx := context.WithValue(c.Request().Context(), "request_id", requestID)
@@ -72,6 +72,20 @@ func NewRouter(app *app.App) *echo.Echo {
 	e.GET("/ws/irisnet/tendermint/v1/:apiKey", app.IRISnetWsHandler.Ws)
 
 	e.Any("/ipfs/*", app.IPFSHandler.Proxy)
+
+	// forwards request to rpc first healthy server
+	if app.RpcConfig != nil {
+		for _, rpcConfig := range app.RpcConfig.Chains {
+			rpcHandler, err := handler.NewRpcHandler(&rpcConfig, app.Logger, app)
+			if err != nil {
+				panic(err)
+			}
+			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/ws", rpcHandler.Ws)
+			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/ws/*", rpcHandler.Ws)
+			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Http)
+			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Http)
+		}
+	}
 
 	return e
 }
