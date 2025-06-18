@@ -110,7 +110,7 @@ func (h *RpcHandler) Http(c echo.Context) error {
 	hopByHopHeaders := []string{
 		"Connection", "Keep-Alive", "Proxy-Authenticate",
 		"Proxy-Authorization", "TE", "Trailer",
-		"Transfer-Encoding", "Upgrade",
+		"Upgrade",
 	}
 	for _, header := range hopByHopHeaders {
 		req.Header.Del(header)
@@ -135,11 +135,11 @@ func (h *RpcHandler) Http(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	c.Response().WriteHeader(resp.StatusCode)
-	headers := []string{"Content-Type", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers"}
-	for _, header := range headers {
-		c.Response().Header().Set(header, resp.Header.Get(header))
+	// Copy headers from response to client
+	for k, v := range resp.Header {
+		c.Response().Header().Set(k, strings.Join(v, ","))
 	}
+	c.Response().WriteHeader(resp.StatusCode)
 	io.Copy(c.Response().Writer, resp.Body)
 
 	return nil
