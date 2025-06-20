@@ -67,7 +67,12 @@ func (u *UpstreamWebSocket) Close() error {
 	if err := u.conn.Close(); err != nil {
 		return err
 	}
-	return u.erigonConn.Close()
+	if u.erigonConn != nil {
+		if err := u.erigonConn.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (u *UpstreamWebSocket) Send(ctx context.Context, logger *zap.Logger, rawreq *jsonrpc.JsonRpcRequest) error {
