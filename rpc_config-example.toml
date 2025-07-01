@@ -1,7 +1,7 @@
 apikey = "YOUR RANDOM KEY" 
 
 [chain_name]
-chain_type = "evm"
+chain_type = "evm" # or "svm"
 
 # Optional configs
 # max_behind_blocks = 10

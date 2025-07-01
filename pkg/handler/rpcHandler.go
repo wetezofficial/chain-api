@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -236,17 +237,32 @@ func (h *RpcHandler) checkNodesHealthy() {
 	blockNumbers := make([]uint64, len(h.nodes))
 	for i, node := range h.nodes {
 		content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
-		blockNumber, err := getBlockNumberFromHttp(node.Http, content, h.jqQuery)
+		httpBlockNumber, err := getBlockNumberFromHttp(node.Http, content, h.jqQuery)
 		if err != nil {
 			log.Printf("failed to get block number from http %s: %v", node.Http, err)
 			continue
 		}
-		blockNumber, err = getBlockNumberFromWs(node.Ws, content, h.jqQuery)
+
+		var wsBlockNumber uint64
+		if h.config.ChainType == "evm" {
+			wsBlockNumber, err = getBlockNumberFromEvmWs(node.Ws, content, h.jqQuery)
+		} else if h.config.ChainType == "svm" {
+			query, err := gojq.Parse(".params.result.slot")
+			if err != nil {
+				log.Printf("failed to parse block number result expression: %v", err)
+				continue
+			}
+			wsBlockNumber, err = getBlockNumberFromSvmWs(node.Ws, query)
+		}
 		if err != nil {
 			log.Printf("failed to get block number from ws %s: %v", node.Ws, err)
 			continue
 		}
-		blockNumbers[i] = blockNumber
+		if wsBlockNumber < httpBlockNumber {
+			log.Printf("ws block number %d is less than http block number %d, node %s is unhealthy", wsBlockNumber, httpBlockNumber, node.Name)
+			continue
+		}
+		blockNumbers[i] = wsBlockNumber
 	}
 	maxBlockNumber := lo.Max(blockNumbers)
 
@@ -259,7 +275,7 @@ func (h *RpcHandler) checkNodesHealthy() {
 	}
 }
 
-func getBlockNumberFromWs(url string, content string, jqQuery *gojq.Query) (uint64, error) {
+func getBlockNumberFromEvmWs(url string, content string, jqQuery *gojq.Query) (uint64, error) {
 	upstream, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
 		return 0, err
@@ -268,6 +284,56 @@ func getBlockNumberFromWs(url string, content string, jqQuery *gojq.Query) (uint
 	if err = upstream.WriteMessage(websocket.TextMessage, []byte(content)); err != nil {
 		return 0, err
 	}
+
+	for {
+		messageType, message, err := upstream.ReadMessage()
+		if err != nil {
+			return 0, err
+		}
+
+		if messageType != websocket.TextMessage {
+			continue
+		}
+		result, err := utils.JqQueryFirst(message, jqQuery)
+		if err != nil {
+			return 0, err
+		}
+		blockNumber, err := utils.ToUint64(result)
+		if err != nil {
+			return 0, err
+		}
+		if blockNumber == 0 {
+			return 0, fmt.Errorf("main WS blockNumber is 0")
+		}
+		return blockNumber, nil
+	}
+}
+
+func getBlockNumberFromSvmWs(url string, jqQuery *gojq.Query) (uint64, error) {
+	upstream, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		return 0, err
+	}
+	var subscriptionID int64
+	defer func() {
+		unsubscribeMessage := fmt.Sprintf(`{"jsonrpc": "2.0","id": 2,"method": "slotUnsubscribe", "params": [%d]}`, subscriptionID)
+		// fmt.Println("unsubscribeMessage", unsubscribeMessage)
+		upstream.WriteMessage(websocket.TextMessage, []byte(unsubscribeMessage))
+		upstream.Close()
+	}()
+
+	if err = upstream.WriteMessage(websocket.TextMessage, []byte(`{"jsonrpc": "2.0","id": 1,"method": "slotSubscribe"}`)); err != nil {
+		return 0, err
+	}
+	_, message, err := upstream.ReadMessage()
+	if err != nil {
+		return 0, err
+	}
+	var subscription map[string]any
+	if err := json.Unmarshal(message, &subscription); err != nil {
+		return 0, err
+	}
+	subscriptionID = int64(subscription["result"].(float64))
 
 	for {
 		messageType, message, err := upstream.ReadMessage()

@@ -152,8 +152,9 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 		cfg := ChainConfig{
 			ChainName: chainName,
 			// Default values
+			ChainType:                   "evm",
 			MaxBehindBlocks:             10,
-			BlockNumberMethod:           "eth_blockNumber",
+			BlockNumberMethod:           "",
 			BlockNumberResultExtractor:  "jq",
 			BlockNumberResultExpression: ".result",
 		}
@@ -164,6 +165,14 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 
 		if err := toml.Unmarshal(buf.Bytes(), &cfg); err != nil {
 			return nil, err
+		}
+
+		if cfg.ChainType == "evm" {
+			cfg.BlockNumberMethod = "eth_blockNumber"
+		} else if cfg.ChainType == "svm" {
+			cfg.BlockNumberMethod = "getBlockHeight"
+		} else {
+			return nil, fmt.Errorf("unsupported chain type: %s", cfg.ChainType)
 		}
 
 		rpcConfig.Chains = append(rpcConfig.Chains, cfg)
