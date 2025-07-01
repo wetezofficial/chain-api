@@ -79,6 +79,15 @@ func (h *RpcHandler) getHealthyNode() (*rpcNode, error) {
 	return nil, fmt.Errorf("no healthy RPC node found")
 }
 
+func (h *RpcHandler) getHealthyWsNode() (*rpcNode, error) {
+	for _, node := range h.nodes {
+		if node.Healthy.Load() && node.Ws != "" {
+			return node, nil
+		}
+	}
+	return nil, fmt.Errorf("no healthy ws rpc node found")
+}
+
 var internalServerError = fmt.Errorf("Internal Server Error")
 
 func (h *RpcHandler) Http(c echo.Context) error {
@@ -150,9 +159,9 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 	requestID := c.Request().Context().Value("request_id").(string)
 	logger := h.logger.With(zap.String("id", requestID))
 
-	node, err := h.getHealthyNode()
+	node, err := h.getHealthyWsNode()
 	if err != nil {
-		logger.Error("failed to get healthy node", zap.Error(err))
+		logger.Error("failed to get healthy ws node", zap.Error(err))
 		return internalServerError
 	}
 
@@ -242,7 +251,11 @@ func (h *RpcHandler) checkNodesHealthy() {
 			log.Printf("failed to get block number from http %s: %v", node.Http, err)
 			continue
 		}
+		blockNumbers[i] = httpBlockNumber
 
+		if node.Ws == "" {
+			continue
+		}
 		var wsBlockNumber uint64
 		if h.config.ChainType == "evm" {
 			wsBlockNumber, err = getBlockNumberFromEvmWs(node.Ws, content, h.jqQuery)
