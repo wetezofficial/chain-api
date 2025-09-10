@@ -245,19 +245,32 @@ func forward(src, dst *websocket.Conn) {
 func (h *RpcHandler) checkNodesHealthy() {
 	blockNumbers := make([]uint64, len(h.nodes))
 	for i, node := range h.nodes {
-		content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
-		httpBlockNumber, err := getBlockNumberFromHttp(node.Http, content, h.jqQuery)
-		if err != nil {
-			log.Printf("failed to get block number from http %s: %v", node.Http, err)
-			continue
+		var httpBlockNumber uint64
+		var err error
+		if h.config.ChainType == "evm" {
+			content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
+			httpBlockNumber, err = getBlockNumberFromEvmHttp(node.Http, content, h.jqQuery)
+			if err != nil {
+				log.Printf("failed to get block number from http %s: %v", node.Http, err)
+				continue
+			}
+		} else if h.config.ChainType == "aptos" {
+			httpBlockNumber, err = getBlockNumberFromAptosHttp(node.Http + "/v1", h.jqQuery)
+			if err != nil {
+				log.Printf("failed to get block number from http %s: %v", node.Http, err)
+				continue
+			}
 		}
 		blockNumbers[i] = httpBlockNumber
+
 
 		if node.Ws == "" {
 			continue
 		}
+
 		var wsBlockNumber uint64
 		if h.config.ChainType == "evm" {
+			content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
 			wsBlockNumber, err = getBlockNumberFromEvmWs(node.Ws, content, h.jqQuery)
 		} else if h.config.ChainType == "svm" {
 			query, err := gojq.Parse(".params.result.slot")
@@ -371,12 +384,42 @@ func getBlockNumberFromSvmWs(url string, jqQuery *gojq.Query) (uint64, error) {
 	}
 }
 
-func getBlockNumberFromHttp(url string, content string, jqQuery *gojq.Query) (uint64, error) {
+func getBlockNumberFromEvmHttp(url string, content string, jqQuery *gojq.Query) (uint64, error) {
 	req, err := http.NewRequest("POST", url, io.NopCloser(bytes.NewBufferString(content)))
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := utils.JqQueryFirst(body, jqQuery)
+	if err != nil {
+		return 0, err
+	}
+
+	blockNumber, err := utils.ToUint64(result)
+	if err != nil {
+		return 0, err
+	}
+
+	return blockNumber, nil
+}
+
+func getBlockNumberFromAptosHttp(url string, jqQuery *gojq.Query) (uint64, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

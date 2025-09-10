@@ -171,6 +171,8 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 			cfg.BlockNumberMethod = "eth_blockNumber"
 		} else if cfg.ChainType == "svm" {
 			cfg.BlockNumberMethod = "getBlockHeight"
+		} else if cfg.ChainType == "aptos" {
+			cfg.BlockNumberResultExpression = ".ledger_version"
 		} else {
 			return nil, fmt.Errorf("unsupported chain type: %s", cfg.ChainType)
 		}
