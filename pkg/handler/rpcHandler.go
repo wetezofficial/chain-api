@@ -182,49 +182,8 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 	}
 	defer ws.Close()
 
-	reqHeader := c.Request().Header.Clone()
-	if connectionHeader := reqHeader.Get("Connection"); connectionHeader != "" {
-		for _, connHeader := range strings.Split(connectionHeader, ",") {
-			reqHeader.Del(strings.TrimSpace(connHeader))
-		}
-	}
-	hopByHopHeaders := []string{
-		"Connection", "Keep-Alive", "Proxy-Authenticate",
-		"Proxy-Authorization", "TE", "Trailer",
-		"Transfer-Encoding", "Upgrade",
-		// WS headers
-		"Sec-WebSocket-Extensions",
-		"Sec-WebSocket-Key",
-		"Sec-WebSocket-Version",
-		"Sec-WebSocket-Protocol",
-		"Sec-WebSocket-Accept",
-		"Sec-WebSocket-Protocol",
-	}
-	for _, header := range hopByHopHeaders {
-		reqHeader.Del(header)
-	}
-
-	clientIP, _, err := net.SplitHostPort(c.Request().RemoteAddr)
-	if err != nil {
-		return err
-	}
-	reqHeader.Set("X-Real-IP", clientIP)
-	// Append to X-Forwarded-For if it already exists
-	if prior, ok := reqHeader["X-Forwarded-For"]; ok && len(prior) > 0 {
-		reqHeader.Set("X-Forwarded-For", strings.Join(prior, ", ")+", "+clientIP)
-	} else {
-		reqHeader.Set("X-Forwarded-For", clientIP)
-	}
-
-	if h.config.ChainName == "abstract" {
-		buf := bytes.NewBuffer(nil)
-		reqHeader.Write(buf)
-		logger.Warn("removing request header for abstract chain", zap.String("request_header", buf.String()))
-		reqHeader = nil // todo: remove this when exact reason is found
-	}
-
 	// Connect to the upstream WebSocket server
-	upstream, err := dialWs(node.Ws, reqHeader)
+	upstream, err := dialWs(node.Ws, nil)
 	if err != nil {
 		logger.Error("failed to dial upstream websocket", zap.Error(err), zap.String("url", node.Ws))
 		return internalServerError
