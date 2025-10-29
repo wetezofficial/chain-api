@@ -217,7 +217,7 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 	}
 
 	// Connect to the upstream WebSocket server
-	upstream, _, err := websocket.DefaultDialer.Dial(node.Ws, reqHeader)
+	upstream, err := dialWs(node.Ws, reqHeader)
 	if err != nil {
 		logger.Error("failed to dial upstream websocket", zap.Error(err), zap.String("url", node.Ws))
 		return internalServerError
@@ -290,8 +290,26 @@ func (h *RpcHandler) checkNodesHealthy() {
 	}
 }
 
+func dialWs(urlStr string, requestHeader http.Header) (*websocket.Conn, error) {
+	upstream, resp, err := websocket.DefaultDialer.Dial(urlStr, requestHeader)
+	if err != nil {
+		respBody := "<nil>"
+		if resp.Body != nil {
+			body, err := io.ReadAll(resp.Body)
+			if err == nil {
+				respBody = string(body)
+			} else {
+				respBody = fmt.Sprintf("<nil>: failed to read response body: %v", err)
+			}
+		}
+
+		return nil, fmt.Errorf("failed to dial websocket: %w\nstatus: %s\nbody: %s", err, resp.Status, respBody)
+	}
+	return upstream, nil
+}
+
 func getBlockNumberFromEvmWs(url string, content string, jqQuery *gojq.Query) (uint64, error) {
-	upstream, _, err := websocket.DefaultDialer.Dial(url, nil)
+	upstream, err := dialWs(url, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -325,7 +343,7 @@ func getBlockNumberFromEvmWs(url string, content string, jqQuery *gojq.Query) (u
 }
 
 func getBlockNumberFromSvmWs(url string, jqQuery *gojq.Query) (uint64, error) {
-	upstream, _, err := websocket.DefaultDialer.Dial(url, nil)
+	upstream, err := dialWs(url, nil)
 	if err != nil {
 		return 0, err
 	}
