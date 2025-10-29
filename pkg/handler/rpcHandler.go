@@ -25,7 +25,8 @@ import (
 
 type rpcNode struct {
 	config.RpcNode
-	Healthy atomic.Bool
+	HttpHealth atomic.Bool
+	WsHealth   atomic.Bool
 }
 
 type RpcHandler struct {
@@ -54,10 +55,12 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 	}
 	for i, node := range config.Nodes {
 		h.nodes[i] = &rpcNode{
-			RpcNode: node,
-			Healthy: atomic.Bool{},
+			RpcNode:    node,
+			HttpHealth: atomic.Bool{},
+			WsHealth:   atomic.Bool{},
 		}
-		h.nodes[i].Healthy.Store(true)
+		h.nodes[i].HttpHealth.Store(true)
+		h.nodes[i].WsHealth.Store(true)
 	}
 
 	go func() {
@@ -72,16 +75,16 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 
 func (h *RpcHandler) getHealthyNode() (*rpcNode, error) {
 	for _, node := range h.nodes {
-		if node.Healthy.Load() {
+		if node.HttpHealth.Load() {
 			return node, nil
 		}
 	}
-	return nil, fmt.Errorf("no healthy RPC node found")
+	return nil, fmt.Errorf("no healthy HTTP RPC node found")
 }
 
 func (h *RpcHandler) getHealthyWsNode() (*rpcNode, error) {
 	for _, node := range h.nodes {
-		if node.Healthy.Load() && node.Ws != "" {
+		if node.WsHealth.Load() {
 			return node, nil
 		}
 	}
@@ -229,21 +232,10 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 
 	return nil
 }
-func forward(src, dst *websocket.Conn) {
-	for {
-		messageType, message, err := src.ReadMessage()
-		if err != nil {
-			dst.Close()
-			return
-		}
-		if err := dst.WriteMessage(messageType, message); err != nil {
-			return
-		}
-	}
-}
 
 func (h *RpcHandler) checkNodesHealthy() {
-	blockNumbers := make([]uint64, len(h.nodes))
+	httpBlockNumbers := make([]int64, len(h.nodes))
+	wsBlockNumbers := make([]int64, len(h.nodes))
 	for i, node := range h.nodes {
 		var httpBlockNumber uint64
 		var err error
@@ -255,14 +247,13 @@ func (h *RpcHandler) checkNodesHealthy() {
 				continue
 			}
 		} else if h.config.ChainType == "aptos" {
-			httpBlockNumber, err = getBlockNumberFromAptosHttp(node.Http + "/v1", h.jqQuery)
+			httpBlockNumber, err = getBlockNumberFromAptosHttp(node.Http+"/v1", h.jqQuery)
 			if err != nil {
 				log.Printf("failed to get block number from http %s: %v", node.Http, err)
 				continue
 			}
 		}
-		blockNumbers[i] = httpBlockNumber
-
+		httpBlockNumbers[i] = int64(httpBlockNumber)
 
 		if node.Ws == "" {
 			continue
@@ -273,7 +264,8 @@ func (h *RpcHandler) checkNodesHealthy() {
 			content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
 			wsBlockNumber, err = getBlockNumberFromEvmWs(node.Ws, content, h.jqQuery)
 		} else if h.config.ChainType == "svm" {
-			query, err := gojq.Parse(".params.result.slot")
+			var query *gojq.Query
+			query, err = gojq.Parse(".params.result.slot")
 			if err != nil {
 				log.Printf("failed to parse block number result expression: %v", err)
 				continue
@@ -288,16 +280,13 @@ func (h *RpcHandler) checkNodesHealthy() {
 			log.Printf("ws block number %d is less than http block number %d, node %s is unhealthy", wsBlockNumber, httpBlockNumber, node.Name)
 			continue
 		}
-		blockNumbers[i] = wsBlockNumber
+		wsBlockNumbers[i] = int64(wsBlockNumber)
 	}
-	maxBlockNumber := lo.Max(blockNumbers)
+	maxBlockNumber := lo.Max(append(httpBlockNumbers, wsBlockNumbers...))
 
 	for i, node := range h.nodes {
-		if blockNumbers[i] == 0 || blockNumbers[i] < maxBlockNumber-h.config.MaxBehindBlocks {
-			node.Healthy.Store(false)
-		} else {
-			node.Healthy.Store(true)
-		}
+		node.HttpHealth.Store(httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
+		node.WsHealth.Store(wsBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
 	}
 }
 

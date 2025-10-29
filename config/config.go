@@ -126,7 +126,7 @@ type RpcConfig struct {
 type ChainConfig struct {
 	ChainName                   string
 	ChainType                   string    `toml:"chain_type"`
-	MaxBehindBlocks             uint64    `toml:"max_behind_blocks"`
+	MaxBehindBlocks             int64     `toml:"max_behind_blocks"`
 	BlockNumberMethod           string    `toml:"block_number_method"`
 	BlockNumberResultExtractor  string    `toml:"block_number_result_extractor"`
 	BlockNumberResultExpression string    `toml:"block_number_result_expression"`
