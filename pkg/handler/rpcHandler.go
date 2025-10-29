@@ -216,6 +216,13 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 		reqHeader.Set("X-Forwarded-For", clientIP)
 	}
 
+	if h.config.ChainName == "abstract" {
+		buf := bytes.NewBuffer(nil)
+		reqHeader.Write(buf)
+		logger.Warn("removing request header for abstract chain", zap.String("request_header", buf.String()))
+		reqHeader = nil // todo: remove this when exact reason is found
+	}
+
 	// Connect to the upstream WebSocket server
 	upstream, err := dialWs(node.Ws, reqHeader)
 	if err != nil {
