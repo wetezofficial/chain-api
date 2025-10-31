@@ -260,7 +260,7 @@ func dialWs(urlStr string, requestHeader http.Header) (*websocket.Conn, error) {
 	upstream, resp, err := websocket.DefaultDialer.Dial(urlStr, requestHeader)
 	if err != nil {
 		respBody := "<nil>"
-		if resp.Body != nil {
+		if resp != nil && resp.Body != nil {
 			body, err := io.ReadAll(resp.Body)
 			if err == nil {
 				respBody = string(body)
