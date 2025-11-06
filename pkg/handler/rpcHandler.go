@@ -146,6 +146,11 @@ func (h *RpcHandler) Http(c echo.Context) error {
 		logger.Error("failed to do request", zap.Error(err), zap.String("url", node.Http))
 		return internalServerError
 	}
+	if resp == nil || resp.Body == nil {
+		logger.Error("response is nil", zap.String("url", node.Http))
+		return internalServerError
+	}
+
 	defer resp.Body.Close()
 
 	// Copy headers from response to client
@@ -259,18 +264,21 @@ func (h *RpcHandler) checkNodesHealthy() {
 func dialWs(urlStr string, requestHeader http.Header) (*websocket.Conn, error) {
 	upstream, resp, err := websocket.DefaultDialer.Dial(urlStr, requestHeader)
 	if err != nil {
-		respBody := "<nil>"
-		if resp != nil && resp.Body != nil {
-			body, err := io.ReadAll(resp.Body)
-			if err == nil {
-				respBody = string(body)
+		respText := "<nil>"
+		if resp != nil {
+			if resp.Body == nil {
+				respText = fmt.Sprintf("%d body: <nil>", resp.StatusCode)
 			} else {
-				respBody = fmt.Sprintf("<nil>: failed to read response body: %v", err)
+				if body, err := io.ReadAll(resp.Body); err == nil {
+					respText = fmt.Sprintf("%d body: %s", resp.StatusCode, string(body))
+				} else {
+					respText = fmt.Sprintf("%d body: <nil>: read resp body error: %v", resp.StatusCode, err)
+				}
 			}
 		}
-
-		return nil, fmt.Errorf("failed to dial websocket: %w\nstatus: %s\nbody: %s", err, resp.Status, respBody)
+		return nil, fmt.Errorf("failed to dial websocket: %w\nresponse: %s", err, respText)
 	}
+
 	return upstream, nil
 }
 
@@ -368,6 +376,9 @@ func getBlockNumberFromEvmHttp(url string, content string, jqQuery *gojq.Query) 
 	if err != nil {
 		return 0, err
 	}
+	if resp == nil || resp.Body == nil {
+		return 0, fmt.Errorf("response is nil")
+	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -397,6 +408,9 @@ func getBlockNumberFromAptosHttp(url string, jqQuery *gojq.Query) (uint64, error
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, err
+	}
+	if resp == nil || resp.Body == nil {
+		return 0, fmt.Errorf("response is nil")
 	}
 	defer resp.Body.Close()
 
