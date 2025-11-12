@@ -210,9 +210,9 @@ func (h *RpcHandler) checkNodesHealthy() {
 	for i, node := range h.nodes {
 		var httpBlockNumber uint64
 		var err error
-		if h.config.ChainType == "evm" {
+		if h.config.ChainType == "evm" || h.config.ChainType == "svm" {
 			content := fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":[],"id":1}`, h.config.BlockNumberMethod)
-			httpBlockNumber, err = getBlockNumberFromEvmHttp(node.Http, content, h.jqQuery)
+			httpBlockNumber, err = getBlockNumberFromHttpJsonRpc(node.Http, content, h.jqQuery)
 			if err != nil {
 				log.Printf("failed to get block number from http %s: %v", node.Http, err)
 				continue
@@ -365,13 +365,7 @@ func getBlockNumberFromSvmWs(url string, jqQuery *gojq.Query) (uint64, error) {
 	}
 }
 
-func getBlockNumberFromEvmHttp(url string, content string, jqQuery *gojq.Query) (uint64, error) {
-	req, err := http.NewRequest("POST", url, io.NopCloser(bytes.NewBufferString(content)))
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
+func getBlockNumberFromHttp(req *http.Request, jqQuery *gojq.Query) (uint64, error) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, err
@@ -399,35 +393,19 @@ func getBlockNumberFromEvmHttp(url string, content string, jqQuery *gojq.Query) 
 	return blockNumber, nil
 }
 
+func getBlockNumberFromHttpJsonRpc(url string, content string, jqQuery *gojq.Query) (uint64, error) {
+	req, err := http.NewRequest("POST", url, io.NopCloser(bytes.NewBufferString(content)))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return getBlockNumberFromHttp(req, jqQuery)
+}
+
 func getBlockNumberFromAptosHttp(url string, jqQuery *gojq.Query) (uint64, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return 0, err
 	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	if resp == nil || resp.Body == nil {
-		return 0, fmt.Errorf("response is nil")
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	result, err := utils.JqQueryFirst(body, jqQuery)
-	if err != nil {
-		return 0, err
-	}
-
-	blockNumber, err := utils.ToUint64(result)
-	if err != nil {
-		return 0, err
-	}
-
-	return blockNumber, nil
+	return getBlockNumberFromHttp(req, jqQuery)
 }
