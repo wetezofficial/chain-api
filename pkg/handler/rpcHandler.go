@@ -218,9 +218,18 @@ func (h *RpcHandler) checkNodesHealthy() {
 				continue
 			}
 		} else if h.config.ChainType == "aptos" {
-			httpBlockNumber, err = getBlockNumberFromAptosHttp(node.Http+"/v1", h.jqQuery)
+			url := node.Http + "/v1"
+			httpBlockNumber, err = getBlockNumberFromAptosHttp(url, h.jqQuery)
 			if err != nil {
-				log.Printf("failed to get block number from http %s: %v", node.Http, err)
+				log.Printf("failed to get block number from http %s: %v", url, err)
+				continue
+			}
+		} else if h.config.ChainType == "tron" {
+			url := node.Http + "/jsonrpc"
+			content := `{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`
+			httpBlockNumber, err = getBlockNumberFromHttpJsonRpc(url, content, h.jqQuery)
+			if err != nil {
+				log.Printf("failed to get block number from http %s: %v", url, err)
 				continue
 			}
 		}

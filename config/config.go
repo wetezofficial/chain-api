@@ -149,11 +149,12 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 		if chainName == "apikey" {
 			continue
 		}
+		var defaultMaxBehindBlocks int64 = 10
 		cfg := ChainConfig{
 			ChainName: chainName,
 			// Default values
 			ChainType:                   "evm",
-			MaxBehindBlocks:             10,
+			MaxBehindBlocks:             defaultMaxBehindBlocks,
 			BlockNumberMethod:           "",
 			BlockNumberResultExtractor:  "jq",
 			BlockNumberResultExpression: ".result",
@@ -167,13 +168,19 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 			return nil, err
 		}
 
-		if cfg.ChainType == "evm" {
+		switch cfg.ChainType {
+		case "evm":
 			cfg.BlockNumberMethod = "eth_blockNumber"
-		} else if cfg.ChainType == "svm" {
+		case "svm":
 			cfg.BlockNumberMethod = "getBlockHeight"
-		} else if cfg.ChainType == "aptos" {
+		case "aptos":
 			cfg.BlockNumberResultExpression = ".ledger_version"
-		} else {
+		case "tron":
+			cfg.BlockNumberMethod = "eth_blockNumber"
+			if cfg.MaxBehindBlocks == defaultMaxBehindBlocks {
+				cfg.MaxBehindBlocks = 40 // 120 seconds
+			}
+		default:
 			return nil, fmt.Errorf("unsupported chain type: %s", cfg.ChainType)
 		}
 
