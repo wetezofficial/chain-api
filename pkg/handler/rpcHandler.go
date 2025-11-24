@@ -25,16 +25,18 @@ import (
 
 type rpcNode struct {
 	config.RpcNode
-	HttpHealth atomic.Bool
-	WsHealth   atomic.Bool
+	HttpHealth       atomic.Bool
+	WsHealth         atomic.Bool
+	ExtraWriteHealth atomic.Bool // tron network only
 }
 
 type RpcHandler struct {
-	config  *config.ChainConfig
-	nodes   []*rpcNode
-	jqQuery *gojq.Query
-	logger  *zap.Logger
-	app     *app.App
+	config                *config.ChainConfig
+	nodes                 []*rpcNode
+	jqQuery               *gojq.Query
+	tronExtraWriteJqQuery *gojq.Query
+	logger                *zap.Logger
+	app                   *app.App
 }
 
 func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App) (*RpcHandler, error) {
@@ -46,21 +48,32 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 		return nil, errors.Wrap(err, "failed to parse block number result expression")
 	}
 
+	var tronExtraWriteJqQuery *gojq.Query
+	if config.ChainType == "tron" {
+		tronExtraWriteJqQuery, err = gojq.Parse(".block_header.raw_data.number")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to parse tron extra write jq query")
+		}
+	}
+
 	h := &RpcHandler{
-		config:  config,
-		jqQuery: query,
-		nodes:   make([]*rpcNode, len(config.Nodes)),
-		logger:  logger,
-		app:     app,
+		config:                config,
+		jqQuery:               query,
+		tronExtraWriteJqQuery: tronExtraWriteJqQuery,
+		nodes:                 make([]*rpcNode, len(config.Nodes)),
+		logger:                logger,
+		app:                   app,
 	}
 	for i, node := range config.Nodes {
 		h.nodes[i] = &rpcNode{
-			RpcNode:    node,
-			HttpHealth: atomic.Bool{},
-			WsHealth:   atomic.Bool{},
+			RpcNode:          node,
+			HttpHealth:       atomic.Bool{},
+			WsHealth:         atomic.Bool{},
+			ExtraWriteHealth: atomic.Bool{},
 		}
-		h.nodes[i].HttpHealth.Store(true)
-		h.nodes[i].WsHealth.Store(true)
+		h.nodes[i].HttpHealth.Store(node.Http != "")
+		h.nodes[i].WsHealth.Store(node.Ws != "")
+		h.nodes[i].ExtraWriteHealth.Store(node.ExtraWrite != "")
 	}
 
 	go func() {
@@ -82,6 +95,15 @@ func (h *RpcHandler) getHealthyNode() (*rpcNode, error) {
 	return nil, fmt.Errorf("no healthy HTTP RPC node found")
 }
 
+func (h *RpcHandler) getHealthyExtraWriteNode() (*rpcNode, error) {
+	for _, node := range h.nodes {
+		if node.ExtraWriteHealth.Load() {
+			return node, nil
+		}
+	}
+	return nil, fmt.Errorf("no healthy extra write rpc node found")
+}
+
 func (h *RpcHandler) getHealthyWsNode() (*rpcNode, error) {
 	for _, node := range h.nodes {
 		if node.WsHealth.Load() {
@@ -93,11 +115,28 @@ func (h *RpcHandler) getHealthyWsNode() (*rpcNode, error) {
 
 var internalServerError = fmt.Errorf("Internal Server Error")
 
+func (h *RpcHandler) ExtraWriteHttp(c echo.Context) error {
+	rawreq := c.Request()
+	path := strings.TrimLeft(strings.TrimPrefix(rawreq.URL.Path, "/ew_rpc/"+h.config.ChainName+"/"+h.app.RpcConfig.ApiKey), "/")
+	logger := h.logger.With(zap.String("id", rawreq.Context().Value("request_id").(string)))
+	node, err := h.getHealthyExtraWriteNode()
+	if err != nil {
+		logger.Error("failed to get healthy extra write node", zap.Error(err))
+		return internalServerError
+	}
+	url := node.ExtraWrite
+	if path != "" {
+		url = fmt.Sprintf("%s/%s", strings.TrimRight(url, "/"), path)
+	}
+	logger = logger.With(zap.String("url", url))
+	fmt.Println("url", url)
+	return h.forwardHttpRequest(c, url, logger)
+}
+
 func (h *RpcHandler) Http(c echo.Context) error {
 	rawreq := c.Request()
 	path := strings.TrimLeft(strings.TrimPrefix(rawreq.URL.Path, "/rpc/"+h.config.ChainName+"/"+h.app.RpcConfig.ApiKey), "/")
-	requestID := rawreq.Context().Value("request_id").(string)
-	logger := h.logger.With(zap.String("id", requestID))
+	logger := h.logger.With(zap.String("id", rawreq.Context().Value("request_id").(string)))
 	node, err := h.getHealthyNode()
 	if err != nil {
 		logger.Error("failed to get healthy node", zap.Error(err))
@@ -107,7 +146,13 @@ func (h *RpcHandler) Http(c echo.Context) error {
 	if path != "" {
 		url = fmt.Sprintf("%s/%s", strings.TrimRight(node.Http, "/"), path)
 	}
+	logger = logger.With(zap.String("url", url))
 	fmt.Println("url", url)
+	return h.forwardHttpRequest(c, url, logger)
+}
+
+func (h *RpcHandler) forwardHttpRequest(c echo.Context, url string, logger *zap.Logger) error {
+	rawreq := c.Request()
 	req, err := http.NewRequest(rawreq.Method, url, rawreq.Body)
 	if err != nil {
 		logger.Error("failed to create request", zap.Error(err))
@@ -143,11 +188,11 @@ func (h *RpcHandler) Http(c echo.Context) error {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		logger.Error("failed to do request", zap.Error(err), zap.String("url", node.Http))
+		logger.Error("failed to do request", zap.Error(err))
 		return internalServerError
 	}
 	if resp == nil || resp.Body == nil {
-		logger.Error("response is nil", zap.String("url", node.Http))
+		logger.Error("response is nil")
 		return internalServerError
 	}
 
@@ -205,6 +250,54 @@ func (h *RpcHandler) Ws(c echo.Context) error {
 }
 
 func (h *RpcHandler) checkNodesHealthy() {
+	switch h.config.ChainType {
+	case "tron":
+		h.checkTronNodesHealthy()
+	default:
+		h.checkHttpAndWsNodesHealthy()
+	}
+}
+
+func (h *RpcHandler) checkTronNodesHealthy() {
+	httpBlockNumbers := make([]int64, len(h.nodes))
+	extraWriteBlockNumbers := make([]int64, len(h.nodes))
+	for i, node := range h.nodes {
+		if node.Http != "" {
+			url := node.Http
+			content := `{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`
+			httpBlockNumber, err := getBlockNumberFromHttpJsonRpc(url, content, h.jqQuery)
+			if err != nil {
+				log.Printf("failed to get block number from http %s: %v", url, err)
+				continue
+			}
+			httpBlockNumbers[i] = int64(httpBlockNumber)
+		}
+
+		// check extra write api
+		if node.ExtraWrite != "" {
+			url := node.ExtraWrite + "/getnowblock"
+			req, err := http.NewRequest("POST", url, nil)
+			if err != nil {
+				log.Printf("failed to get block number from extra write api %s: %v", url, err)
+				continue
+			}
+			extraWriteApiBlockNumber, err := getBlockNumberFromHttp(req, h.tronExtraWriteJqQuery)
+			if err != nil {
+				log.Printf("failed to get block number from extra write api %s: %v", url, err)
+				continue
+			}
+			extraWriteBlockNumbers[i] = int64(extraWriteApiBlockNumber)
+		}
+	}
+	maxBlockNumber := lo.Max(append(httpBlockNumbers, extraWriteBlockNumbers...))
+
+	for i, node := range h.nodes {
+		node.HttpHealth.Store(httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
+		node.ExtraWriteHealth.Store(extraWriteBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
+	}
+}
+
+func (h *RpcHandler) checkHttpAndWsNodesHealthy() {
 	httpBlockNumbers := make([]int64, len(h.nodes))
 	wsBlockNumbers := make([]int64, len(h.nodes))
 	for i, node := range h.nodes {
@@ -220,14 +313,6 @@ func (h *RpcHandler) checkNodesHealthy() {
 		} else if h.config.ChainType == "aptos" {
 			url := node.Http + "/v1"
 			httpBlockNumber, err = getBlockNumberFromAptosHttp(url, h.jqQuery)
-			if err != nil {
-				log.Printf("failed to get block number from http %s: %v", url, err)
-				continue
-			}
-		} else if h.config.ChainType == "tron" {
-			url := node.Http + "/jsonrpc"
-			content := `{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}`
-			httpBlockNumber, err = getBlockNumberFromHttpJsonRpc(url, content, h.jqQuery)
 			if err != nil {
 				log.Printf("failed to get block number from http %s: %v", url, err)
 				continue

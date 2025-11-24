@@ -113,9 +113,10 @@ func LoadConfig(configFile string) (*Config, error) {
 }
 
 type RpcNode struct {
-	Name string `toml:"name"`
-	Http string `toml:"http"`
-	Ws   string `toml:"ws"`
+	Name       string `toml:"name"`
+	Http       string `toml:"http"`
+	Ws         string `toml:"ws"`
+	ExtraWrite string `toml:"extra_write"` // tron network only
 }
 
 type RpcConfig struct {

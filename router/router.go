@@ -80,10 +80,18 @@ func NewRouter(app *app.App) *echo.Echo {
 			if err != nil {
 				panic(err)
 			}
-			e.Any("/ws/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Ws)
-			e.Any("/ws/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Ws)
-			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Http)
-			e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Http)
+			switch rpcConfig.ChainType {
+			case "tron":
+				e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Http)
+				e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Http)
+				e.Any("/ew_rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.ExtraWriteHttp)
+				e.Any("/ew_rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.ExtraWriteHttp)
+			default:
+				e.Any("/ws/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Ws)
+				e.Any("/ws/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Ws)
+				e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey, rpcHandler.Http)
+				e.Any("/rpc/"+rpcConfig.ChainName+"/"+app.RpcConfig.ApiKey+"/*", rpcHandler.Http)
+			}
 		}
 	}
 
