@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"starnet/chain-api/config"
 	"starnet/chain-api/pkg/app"
+	"starnet/chain-api/pkg/prometheus"
 	"starnet/chain-api/pkg/utils"
 	"strings"
 	"sync/atomic"
@@ -33,6 +34,7 @@ type rpcNode struct {
 type RpcHandler struct {
 	config                *config.ChainConfig
 	nodes                 []*rpcNode
+	nodeErrorCounts       []int
 	jqQuery               *gojq.Query
 	tronExtraWriteJqQuery *gojq.Query
 	logger                *zap.Logger
@@ -61,6 +63,7 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 		jqQuery:               query,
 		tronExtraWriteJqQuery: tronExtraWriteJqQuery,
 		nodes:                 make([]*rpcNode, len(config.Nodes)),
+		nodeErrorCounts:       make([]int, len(config.Nodes)),
 		logger:                logger,
 		app:                   app,
 	}
@@ -79,6 +82,7 @@ func NewRpcHandler(config *config.ChainConfig, logger *zap.Logger, app *app.App)
 	go func() {
 		for {
 			h.checkNodesHealthy()
+			h.reportNodeErrors()
 			time.Sleep(time.Minute)
 		}
 	}()
@@ -258,6 +262,21 @@ func (h *RpcHandler) checkNodesHealthy() {
 	}
 }
 
+func (h *RpcHandler) reportNodeErrors() {
+	metrics := make([]prometheus.ErrorNumMetric, len(h.nodes))
+	for i, node := range h.nodes {
+		nodeName := node.Name
+		if nodeName == "" {
+			nodeName = fmt.Sprintf("index_%d", i)
+		}
+		metrics[i] = prometheus.ErrorNumMetric{
+			NodeName: nodeName,
+			ErrorNum: h.nodeErrorCounts[i],
+		}
+	}
+	prometheus.PushMetrics(h.config.ChainName, metrics)
+}
+
 func (h *RpcHandler) checkTronNodesHealthy() {
 	httpBlockNumbers := make([]int64, len(h.nodes))
 	extraWriteBlockNumbers := make([]int64, len(h.nodes))
@@ -292,8 +311,21 @@ func (h *RpcHandler) checkTronNodesHealthy() {
 	maxBlockNumber := lo.Max(append(httpBlockNumbers, extraWriteBlockNumbers...))
 
 	for i, node := range h.nodes {
-		node.HttpHealth.Store(httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
-		node.ExtraWriteHealth.Store(extraWriteBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
+		httpHealthy := httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks
+		extraWriteHealthy := extraWriteBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks
+		node.HttpHealth.Store(httpHealthy)
+		node.ExtraWriteHealth.Store(extraWriteHealthy)
+
+		unhealthy := false
+		if node.Http != "" && !httpHealthy {
+			unhealthy = true
+		}
+		if node.ExtraWrite != "" && !extraWriteHealthy {
+			unhealthy = true
+		}
+		if unhealthy {
+			h.nodeErrorCounts[i]++
+		}
 	}
 }
 
@@ -350,8 +382,21 @@ func (h *RpcHandler) checkHttpAndWsNodesHealthy() {
 	maxBlockNumber := lo.Max(append(httpBlockNumbers, wsBlockNumbers...))
 
 	for i, node := range h.nodes {
-		node.HttpHealth.Store(httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
-		node.WsHealth.Store(wsBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks)
+		httpHealthy := httpBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks
+		wsHealthy := wsBlockNumbers[i] >= maxBlockNumber-h.config.MaxBehindBlocks
+		node.HttpHealth.Store(httpHealthy)
+		node.WsHealth.Store(wsHealthy)
+
+		unhealthy := false
+		if node.Http != "" && !httpHealthy {
+			unhealthy = true
+		}
+		if node.Ws != "" && !wsHealthy {
+			unhealthy = true
+		}
+		if unhealthy {
+			h.nodeErrorCounts[i]++
+		}
 	}
 }
 
