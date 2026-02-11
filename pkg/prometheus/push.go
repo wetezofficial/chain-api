@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-const pushgatewayBase = "http://localhost:9091"
+var PushgatewayBase string = "http://localhost:9091"
 
 func PushMetrics(networkName string, metrics []ErrorNumMetric) {
 	body := ""
@@ -31,7 +31,7 @@ func (m *ErrorNumMetric) String() string {
 // pushBody sends a Prometheus exposition-format body to the Pushgateway in one HTTP request.
 // The body may contain multiple metrics, one per line (e.g. "metric_name{label=\"val\"} 123").
 func pushBody(networkName string, body string) error {
-	url := fmt.Sprintf("%s/metrics/job/rpc_nde/instance/rpc_nde_error/network/%s", pushgatewayBase, networkName)
+	url := fmt.Sprintf("%s/metrics/job/rpc_nde/instance/rpc_nde_error/network/%s", PushgatewayBase, networkName)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBufferString(body))
 	if err != nil {
 		return err

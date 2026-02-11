@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"starnet/chain-api/pkg/db"
+	"starnet/chain-api/pkg/prometheus"
 	"starnet/chain-api/service"
 	"starnet/starnet/pkg/cache"
 
@@ -65,6 +66,7 @@ func NewApp(configFile string, rpcConfigFile string) *app.App {
 		if err != nil {
 			logger.Fatal("fail to load rpc config", zap.Error(err))
 		}
+		prometheus.PushgatewayBase = rpcConfig.HealthPushgateway
 	}
 
 	_app := app.App{

@@ -120,8 +120,9 @@ type RpcNode struct {
 }
 
 type RpcConfig struct {
-	ApiKey string
-	Chains []ChainConfig
+	ApiKey            string
+	HealthPushgateway string
+	Chains            []ChainConfig
 }
 
 type ChainConfig struct {
@@ -142,12 +143,13 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 	}
 
 	rpcConfig := &RpcConfig{
-		ApiKey: config["apikey"].(string),
-		Chains: make([]ChainConfig, 0),
+		ApiKey:            config["apikey"].(string),
+		HealthPushgateway: config["health_pushgateway"].(string),
+		Chains:            make([]ChainConfig, 0),
 	}
 
 	for chainName, chainConfig := range config {
-		if chainName == "apikey" {
+		if chainName == "apikey" || chainName == "health_pushgateway" {
 			continue
 		}
 		var defaultMaxBehindBlocks int64 = 10
