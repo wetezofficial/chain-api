@@ -263,18 +263,23 @@ func (h *RpcHandler) checkNodesHealthy() {
 }
 
 func (h *RpcHandler) reportNodeErrors() {
-	metrics := make([]prometheus.ErrorNumMetric, len(h.nodes))
+	metrics := make([]prometheus.ErrorNumMetric, 0, len(h.nodes))
 	for i, node := range h.nodes {
 		nodeName := node.Name
 		if nodeName == "" {
 			nodeName = fmt.Sprintf("index_%d", i)
 		}
-		metrics[i] = prometheus.ErrorNumMetric{
-			NodeName: nodeName,
-			ErrorNum: h.nodeErrorCounts[i],
+		count := h.nodeErrorCounts[i]
+		if count > 0 {
+			metrics = append(metrics, prometheus.ErrorNumMetric{
+				NodeName: nodeName,
+				ErrorNum: count,
+			})
 		}
 	}
-	prometheus.PushMetrics(h.config.ChainName, metrics)
+	if len(metrics) > 0 {
+		prometheus.PushMetrics(h.config.ChainName, metrics)
+	}
 }
 
 func (h *RpcHandler) checkTronNodesHealthy() {
