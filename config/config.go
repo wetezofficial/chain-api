@@ -143,9 +143,11 @@ func LoadRPCConfig(data string) (*RpcConfig, error) {
 	}
 
 	rpcConfig := &RpcConfig{
-		ApiKey:            config["apikey"].(string),
-		HealthPushgateway: config["health_pushgateway"].(string),
-		Chains:            make([]ChainConfig, 0),
+		ApiKey: config["apikey"].(string),
+		Chains: make([]ChainConfig, 0),
+	}
+	if v, ok := config["health_pushgateway"]; ok {
+		rpcConfig.HealthPushgateway = v.(string)
 	}
 
 	for chainName, chainConfig := range config {

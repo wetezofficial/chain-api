@@ -263,6 +263,9 @@ func (h *RpcHandler) checkNodesHealthy() {
 }
 
 func (h *RpcHandler) reportNodeErrors() {
+	if prometheus.PushgatewayBase == "" {
+		return
+	}
 	metrics := make([]prometheus.ErrorNumMetric, 0, len(h.nodes))
 	for i, node := range h.nodes {
 		nodeName := node.Name
